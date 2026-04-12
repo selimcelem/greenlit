@@ -23,6 +23,7 @@ resource "aws_iam_role_policy_attachment" "analyze_logs" {
 
 data "aws_iam_policy_document" "analyze_inline" {
   statement {
+    sid    = "DynamoAccess"
     effect = "Allow"
     actions = [
       "dynamodb:GetItem",
@@ -32,6 +33,13 @@ data "aws_iam_policy_document" "analyze_inline" {
       aws_dynamodb_table.users.arn,
       aws_dynamodb_table.cache.arn,
     ]
+  }
+
+  statement {
+    sid       = "ReadAnthropicSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.anthropic.arn]
   }
 }
 

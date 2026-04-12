@@ -1,8 +1,38 @@
 import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 
 const MODEL = 'claude-haiku-4-5-20251001';
+
+// The Anthropic key lives in Secrets Manager. We fetch it on the first
+// invocation per Lambda container and cache it for the lifetime of that
+// container — Lambda reuses warm containers across many invocations, so
+// the secret round-trip only costs us on cold starts.
+let cachedClient: Anthropic | null = null;
+let inflight: Promise<Anthropic> | null = null;
+
+async function getClient(): Promise<Anthropic> {
+  if (cachedClient) return cachedClient;
+  if (inflight) return inflight;
+
+  inflight = (async () => {
+    const secretArn = process.env.ANTHROPIC_SECRET_ARN;
+    if (!secretArn) throw new Error('ANTHROPIC_SECRET_ARN is not set');
+
+    const sm = new SecretsManagerClient({ region: process.env.AWS_REGION });
+    const result = await sm.send(new GetSecretValueCommand({ SecretId: secretArn }));
+    const apiKey = result.SecretString;
+    if (!apiKey) throw new Error('Anthropic secret has no SecretString');
+
+    cachedClient = new Anthropic({ apiKey });
+    return cachedClient;
+  })();
+
+  try {
+    return await inflight;
+  } finally {
+    inflight = null;
+  }
+}
 
 export interface JobData {
   title?: string;
@@ -76,6 +106,7 @@ Location: ${jobData.location || 'Unknown'}
 Description:
 ${(jobData.description || '').substring(0, 4000)}`;
 
+  const client = await getClient();
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 800,

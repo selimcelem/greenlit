@@ -15,9 +15,9 @@ resource "aws_lambda_function" "analyze" {
 
   environment {
     variables = {
-      ANTHROPIC_API_KEY = var.anthropic_api_key
-      USERS_TABLE       = aws_dynamodb_table.users.name
-      CACHE_TABLE       = aws_dynamodb_table.cache.name
+      ANTHROPIC_SECRET_ARN = aws_secretsmanager_secret.anthropic.arn
+      USERS_TABLE          = aws_dynamodb_table.users.name
+      CACHE_TABLE          = aws_dynamodb_table.cache.name
     }
   }
 }
