@@ -3,7 +3,7 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins  = ["*"]
+    allow_origins  = var.allowed_origins
     allow_methods  = ["GET", "POST", "PUT", "OPTIONS"]
     allow_headers  = ["Authorization", "Content-Type"]
     expose_headers = []

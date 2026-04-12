@@ -16,12 +16,17 @@ resource "aws_iam_role" "analyze" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-resource "aws_iam_role_policy_attachment" "analyze_logs" {
-  role       = aws_iam_role.analyze.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
 data "aws_iam_policy_document" "analyze_inline" {
+  statement {
+    sid    = "WriteOwnLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.analyze.arn}:*"]
+  }
+
   statement {
     sid    = "DynamoAccess"
     effect = "Allow"
@@ -55,13 +60,19 @@ resource "aws_iam_role" "profile" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-resource "aws_iam_role_policy_attachment" "profile_logs" {
-  role       = aws_iam_role.profile.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
 data "aws_iam_policy_document" "profile_inline" {
   statement {
+    sid    = "WriteOwnLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.profile.arn}:*"]
+  }
+
+  statement {
+    sid    = "DynamoAccess"
     effect = "Allow"
     actions = [
       "dynamodb:GetItem",
@@ -83,13 +94,19 @@ resource "aws_iam_role" "upload" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-resource "aws_iam_role_policy_attachment" "upload_logs" {
-  role       = aws_iam_role.upload.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
 data "aws_iam_policy_document" "upload_inline" {
   statement {
+    sid    = "WriteOwnLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.upload.arn}:*"]
+  }
+
+  statement {
+    sid       = "PutResumePdf"
     effect    = "Allow"
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.resumes.arn}/resumes/*"]

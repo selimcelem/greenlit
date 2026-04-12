@@ -33,14 +33,14 @@ resource "aws_s3_bucket_versioning" "resumes" {
 }
 
 # CORS so the extension can PUT directly to a presigned URL from the
-# chrome-extension:// origin.
+# chrome-extension:// origin. Origins are pinned via var.allowed_origins.
 resource "aws_s3_bucket_cors_configuration" "resumes" {
   bucket = aws_s3_bucket.resumes.id
 
   cors_rule {
     allowed_methods = ["PUT"]
-    allowed_origins = ["*"]
-    allowed_headers = ["*"]
+    allowed_origins = var.allowed_origins
+    allowed_headers = ["Content-Type"]
     max_age_seconds = 3000
   }
 }
