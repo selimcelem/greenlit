@@ -45,6 +45,39 @@ resource "aws_s3_bucket_cors_configuration" "resumes" {
   }
 }
 
+# Deny any access that isn't over TLS. The presigned PUTs from the
+# extension are HTTPS, so this only blocks misconfigured clients and
+# shrinks the blast radius if presigned URLs ever leak.
+data "aws_iam_policy_document" "resumes_secure_transport" {
+  statement {
+    sid     = "DenyInsecureTransport"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.resumes.arn,
+      "${aws_s3_bucket.resumes.arn}/*",
+    ]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "resumes" {
+  bucket = aws_s3_bucket.resumes.id
+  policy = data.aws_iam_policy_document.resumes_secure_transport.json
+
+  # The public-access block must be in place before we apply a bucket
+  # policy or AWS rejects the policy as potentially-public.
+  depends_on = [aws_s3_bucket_public_access_block.resumes]
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "resumes" {
   bucket = aws_s3_bucket.resumes.id
 

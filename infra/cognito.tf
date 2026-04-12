@@ -4,12 +4,22 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # Strong password policy: 12+ chars, all character classes required.
   password_policy {
-    minimum_length    = 10
-    require_lowercase = true
-    require_numbers   = true
-    require_symbols   = false
-    require_uppercase = true
+    minimum_length                   = 12
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = true
+    require_uppercase                = true
+    temporary_password_validity_days = 1
+  }
+
+  # MFA optional with TOTP. Users who opt in get a software-token second
+  # factor. SMS MFA is intentionally disabled (toll fraud + cost).
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
   }
 
   account_recovery_setting {
@@ -19,9 +29,17 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  # Self-service sign-up is allowed (this is a public extension), but the
+  # account isn't usable until the email verification code is confirmed.
   admin_create_user_config {
     allow_admin_create_user_only = false
   }
+
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
+  deletion_protection = "ACTIVE"
 }
 
 resource "aws_cognito_user_pool_client" "extension" {

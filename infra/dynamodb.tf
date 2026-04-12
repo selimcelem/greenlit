@@ -15,6 +15,8 @@ resource "aws_dynamodb_table" "users" {
   server_side_encryption {
     enabled = true
   }
+
+  deletion_protection_enabled = true
 }
 
 resource "aws_dynamodb_table" "cache" {
@@ -41,4 +43,6 @@ resource "aws_dynamodb_table" "cache" {
   server_side_encryption {
     enabled = true
   }
+
+  deletion_protection_enabled = true
 }
