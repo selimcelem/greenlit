@@ -1,0 +1,204 @@
+/* content.css — JobLens badge and panel styles injected into LinkedIn */
+
+/* ── Detail Panel ─────────────────────────────────────────────── */
+
+.jl-detail-panel {
+  margin: 12px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  border: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+.jl-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  color: #666;
+  font-size: 13px;
+}
+
+.jl-error {
+  padding: 12px 16px;
+  background: #fff3f3;
+  color: #c0392b;
+  font-size: 13px;
+}
+
+.jl-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ddd;
+  border-top-color: #0a66c2;
+  border-radius: 50%;
+  animation: jl-spin 0.7s linear infinite;
+}
+
+/* ── Detail Header ────────────────────────────────────────────── */
+
+.jl-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.jl-detail-header.jl-green  { background: #f0faf4; }
+.jl-detail-header.jl-yellow { background: #fffbf0; }
+.jl-detail-header.jl-red    { background: #fff3f3; }
+
+.jl-score-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.jl-score-circle.jl-green  { background: #27ae60; }
+.jl-score-circle.jl-yellow { background: #e67e22; }
+.jl-score-circle.jl-red    { background: #e74c3c; }
+
+.jl-header-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jl-header-text strong {
+  font-size: 15px;
+  color: #1a1a1a;
+}
+
+.jl-header-text span {
+  font-size: 12px;
+  color: #888;
+}
+
+.jl-expand-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #555;
+  white-space: nowrap;
+}
+
+.jl-expand-btn:hover {
+  background: #f5f5f5;
+}
+
+/* ── Reasons ──────────────────────────────────────────────────── */
+
+.jl-reasons {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.jl-reason {
+  font-size: 13px;
+  color: #444;
+  line-height: 1.4;
+}
+
+/* ── Breakdown ────────────────────────────────────────────────── */
+
+.jl-breakdown {
+  border-top: 1px solid #eee;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.jl-breakdown-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.jl-breakdown-icon {
+  font-size: 14px;
+  font-weight: 700;
+  width: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.jl-match   { color: #27ae60; }
+.jl-nomatch { color: #e74c3c; }
+
+.jl-breakdown-row strong {
+  font-size: 13px;
+  color: #222;
+}
+
+.jl-breakdown-row em {
+  font-size: 12px;
+  color: #888;
+  margin-left: 4px;
+}
+
+.jl-breakdown-row p {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #555;
+  line-height: 1.4;
+}
+
+/* ── Feed Badges ──────────────────────────────────────────────── */
+
+.jl-feed-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+  cursor: default;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.jl-feed-green  { background: #27ae60; }
+.jl-feed-yellow { background: #e67e22; }
+.jl-feed-red    { background: #e74c3c; }
+.jl-feed-error  { background: #aaa; font-size: 14px; }
+
+.jl-feed-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #0a66c2;
+  border-radius: 50%;
+  animation: jl-spin 0.7s linear infinite;
+  margin: auto;
+}
+
+.jl-feed-badge.jl-feed-spinner-wrap {
+  background: #f0f0f0;
+}
+
+/* ── Animation ────────────────────────────────────────────────── */
+
+@keyframes jl-spin {
+  to { transform: rotate(360deg); }
+}
