@@ -1,0 +1,5 @@
+bucket         = "greenlit-tfstate-REPLACE_ME"
+key            = "greenlit/terraform.tfstate"
+region         = "eu-central-1"
+dynamodb_table = "greenlit-tfstate-lock"
+encrypt        = true

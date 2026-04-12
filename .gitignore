@@ -15,6 +15,7 @@ terraform.tfstate
 terraform.tfstate.*
 *.tfvars
 !example.tfvars
+infra/backend.hcl
 
 # Backend build artifacts
 backend/dist/
