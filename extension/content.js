@@ -1,23 +1,22 @@
-// content.js — injects JobLens badges into LinkedIn job pages
+// content.js — injects Greenlit badges into LinkedIn job pages
 
 const JL_CACHE = new Map(); // jobId -> analysis result
-let JL_SETTINGS = null;
 let JL_OBSERVER = null;
 
 // ─── Bootstrap ──────────────────────────────────────────────────────────────
 
 async function init() {
-  JL_SETTINGS = await getSettings();
-  if (!JL_SETTINGS.apiKey || !JL_SETTINGS.resumeText) {
-    console.log('[JobLens] Not configured — open the extension popup to set up.');
+  const status = await getAuthStatus();
+  if (!status.authenticated) {
+    console.log('[Greenlit] Not signed in — open the extension popup to sign in.');
     return;
   }
   observePage();
 }
 
-function getSettings() {
+function getAuthStatus() {
   return new Promise(resolve => {
-    chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, resolve);
+    chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' }, resolve);
   });
 }
 
@@ -57,13 +56,22 @@ function injectDetailBadge() {
   const jobData = extractDetailJobData();
   if (!jobData.title || !jobData.description) return;
 
+  const jobId = getDetailJobId() || `${location.pathname}:${jobData.title}`;
+
   // Create placeholder panel immediately
   const panel = createDetailPanel(null, 'loading');
   const insertTarget = titleEl.closest('[class*="top-card"], [class*="unified-top-card"]') || titleEl.parentElement;
   insertTarget.insertAdjacentElement('afterend', panel);
 
   // Request analysis
-  analyzeJob(jobData, panel);
+  analyzeJob(jobId, jobData, panel);
+}
+
+function getDetailJobId() {
+  const m = location.pathname.match(/\/jobs\/view\/(\d+)/);
+  if (m) return m[1];
+  const param = new URLSearchParams(location.search).get('currentJobId');
+  return param || null;
 }
 
 function extractDetailJobData() {
@@ -118,13 +126,13 @@ function createDetailPanel(result, state) {
     panel.innerHTML = `
       <div class="jl-loading">
         <div class="jl-spinner"></div>
-        <span>JobLens analyzing…</span>
+        <span>Greenlit analyzing…</span>
       </div>`;
     return panel;
   }
 
   if (state === 'error') {
-    panel.innerHTML = `<div class="jl-error">⚠ JobLens: ${result}</div>`;
+    panel.innerHTML = `<div class="jl-error">⚠ Greenlit: ${result}</div>`;
     return panel;
   }
 
@@ -134,7 +142,7 @@ function createDetailPanel(result, state) {
       <div class="jl-score-circle ${colorClass}">${result.score}</div>
       <div class="jl-header-text">
         <strong>${result.label}</strong>
-        <span>JobLens Match Score</span>
+        <span>Greenlit Match Score</span>
       </div>
       <button class="jl-expand-btn" aria-expanded="false">Details ▾</button>
     </div>
@@ -259,9 +267,9 @@ function updateFeedBadge(badge, result) {
 
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
-async function analyzeJob(jobData, panel) {
+async function analyzeJob(jobId, jobData, panel) {
   try {
-    const result = await callAnalysis(jobData);
+    const result = await callAnalysis(jobId, jobData);
     const newPanel = createDetailPanel(result, 'done');
     panel.replaceWith(newPanel);
   } catch (err) {
@@ -272,7 +280,7 @@ async function analyzeJob(jobData, panel) {
 
 async function analyzeJobForCard(jobData, badge, jobId) {
   try {
-    const result = await callAnalysis(jobData);
+    const result = await callAnalysis(jobId, jobData);
     JL_CACHE.set(jobId, result);
     updateFeedBadge(badge, result);
   } catch (err) {
@@ -282,14 +290,12 @@ async function analyzeJobForCard(jobData, badge, jobId) {
   }
 }
 
-function callAnalysis(jobData) {
+function callAnalysis(jobId, jobData) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({
       type: 'ANALYZE_JOB',
+      jobId,
       jobData,
-      resumeText: JL_SETTINGS.resumeText,
-      apiKey: JL_SETTINGS.apiKey,
-      preferences: JL_SETTINGS.preferences || {}
     }, (response) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       if (response?.success) resolve(response.result);

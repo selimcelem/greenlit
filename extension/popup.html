@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JobLens Settings</title>
+  <title>Greenlit</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -24,19 +24,9 @@
       gap: 10px;
     }
 
-    header .logo {
-      font-size: 20px;
-    }
-
-    header h1 {
-      font-size: 16px;
-      font-weight: 600;
-    }
-
-    header p {
-      font-size: 11px;
-      opacity: 0.8;
-    }
+    header .logo { font-size: 20px; }
+    header h1 { font-size: 16px; font-weight: 600; }
+    header p { font-size: 11px; opacity: 0.8; }
 
     .status-bar {
       padding: 8px 16px;
@@ -48,7 +38,7 @@
 
     .status-bar.ready    { background: #f0faf4; color: #27ae60; }
     .status-bar.missing  { background: #fff3f3; color: #e74c3c; }
-    .status-bar.saved    { background: #f0faf4; color: #27ae60; }
+    .status-bar.info     { background: #eef5fb; color: #0a66c2; }
 
     .dot {
       width: 8px; height: 8px;
@@ -80,6 +70,7 @@
 
     input[type="password"],
     input[type="text"],
+    input[type="email"],
     textarea,
     select {
       width: 100%;
@@ -155,7 +146,7 @@
       gap: 10px;
     }
 
-    .save-btn {
+    .btn {
       width: 100%;
       padding: 10px;
       background: #0a66c2;
@@ -168,8 +159,10 @@
       transition: background 0.2s;
     }
 
-    .save-btn:hover { background: #084e96; }
-    .save-btn:active { transform: scale(0.99); }
+    .btn:hover { background: #084e96; }
+    .btn:active { transform: scale(0.99); }
+    .btn.secondary { background: #f3f3f3; color: #444; }
+    .btn.secondary:hover { background: #e5e5e5; }
 
     .hint {
       font-size: 11px;
@@ -177,83 +170,181 @@
       margin-top: 5px;
     }
 
+    .form-row { margin-bottom: 10px; }
+
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid #eee;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 13px;
+      color: #666;
+      border-bottom: 2px solid transparent;
+    }
+
+    .auth-tab.active {
+      color: #0a66c2;
+      border-bottom-color: #0a66c2;
+      font-weight: 600;
+    }
+
+    .signed-in-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #f7f9fb;
+      font-size: 12px;
+      color: #444;
+    }
+
+    .signed-in-bar a {
+      color: #0a66c2;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .hidden { display: none !important; }
+
+    .err { color: #e74c3c; font-size: 11px; margin-top: 6px; }
+    .ok  { color: #27ae60; font-size: 11px; margin-top: 6px; }
+
     a { color: #0a66c2; }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">🔍</div>
+  <div class="logo">🟢</div>
   <div>
-    <h1>JobLens</h1>
+    <h1>Greenlit</h1>
     <p>AI Job Match Filter for LinkedIn</p>
   </div>
 </header>
 
-<div class="status-bar missing" id="status-bar">
-  <div class="dot"></div>
-  <span id="status-text">Not configured — fill in your details below</span>
+<!-- ───── Signed-out view ───── -->
+<div id="auth-view">
+  <div class="auth-tabs">
+    <div class="auth-tab active" data-tab="signin">Sign in</div>
+    <div class="auth-tab" data-tab="signup">Create account</div>
+  </div>
+
+  <!-- Sign in -->
+  <div class="section" id="signin-pane">
+    <div class="form-row">
+      <label>Email</label>
+      <input type="email" id="signin-email" placeholder="you@example.com" />
+    </div>
+    <div class="form-row">
+      <label>Password</label>
+      <input type="password" id="signin-password" />
+    </div>
+    <button class="btn" id="signin-btn">Sign in</button>
+    <div class="err hidden" id="signin-err"></div>
+  </div>
+
+  <!-- Sign up -->
+  <div class="section hidden" id="signup-pane">
+    <div class="form-row">
+      <label>Email</label>
+      <input type="email" id="signup-email" placeholder="you@example.com" />
+    </div>
+    <div class="form-row">
+      <label>Password <span>10+ chars, upper, lower, number</span></label>
+      <input type="password" id="signup-password" />
+    </div>
+    <button class="btn" id="signup-btn">Create account</button>
+    <div class="err hidden" id="signup-err"></div>
+    <div class="ok hidden" id="signup-ok"></div>
+  </div>
+
+  <!-- Confirm sign up -->
+  <div class="section hidden" id="confirm-pane">
+    <p style="margin-bottom:10px;color:#555">We sent a code to <strong id="confirm-email-label"></strong>. Enter it below.</p>
+    <div class="form-row">
+      <label>Confirmation code</label>
+      <input type="text" id="confirm-code" placeholder="123456" />
+    </div>
+    <button class="btn" id="confirm-btn">Confirm</button>
+    <div class="err hidden" id="confirm-err"></div>
+  </div>
 </div>
 
-<!-- API Key -->
-<div class="section">
-  <label>Claude API Key <span>from console.anthropic.com</span></label>
-  <input type="password" id="api-key" placeholder="sk-ant-…" />
-  <p class="hint">Your key is stored locally on your machine only. Never sent anywhere except Anthropic.</p>
-</div>
+<!-- ───── Signed-in view ───── -->
+<div id="profile-view" class="hidden">
 
-<!-- Resume -->
-<div class="section">
-  <label>Your Resume</label>
+  <div class="signed-in-bar">
+    <span>Signed in</span>
+    <a id="signout-link">Sign out</a>
+  </div>
 
-  <div class="upload-area" id="upload-area" onclick="document.getElementById('pdf-input').click()">
-    <div class="upload-icon">📄</div>
-    <div class="upload-text" id="upload-text">
-      <strong>Click to upload PDF</strong><br>or paste text below
+  <div class="status-bar info" id="status-bar">
+    <div class="dot"></div>
+    <span id="status-text">Loading profile…</span>
+  </div>
+
+  <!-- Resume -->
+  <div class="section">
+    <label>Your Resume</label>
+
+    <div class="upload-area" id="upload-area">
+      <div class="upload-icon">📄</div>
+      <div class="upload-text" id="upload-text">
+        <strong>Click to upload PDF</strong><br>or paste text below
+      </div>
+    </div>
+    <input type="file" id="pdf-input" accept=".pdf" />
+
+    <div class="or-divider">or paste plain text</div>
+
+    <textarea id="resume-text" placeholder="Paste your resume text here…"></textarea>
+  </div>
+
+  <!-- Preferences -->
+  <div class="section">
+    <label>Job Preferences</label>
+
+    <div class="form-row">
+      <label style="font-weight:400; margin-bottom:4px">Target Role</label>
+      <input type="text" id="target-role" placeholder="e.g. Junior Cloud Engineer" />
+    </div>
+
+    <div class="row-2">
+      <div>
+        <label style="font-weight:400; margin-bottom:4px">Seniority</label>
+        <select id="seniority">
+          <option value="Junior / Entry-level">Junior / Entry-level</option>
+          <option value="Mid-level">Mid-level</option>
+          <option value="Any">Any</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-weight:400; margin-bottom:4px">Location</label>
+        <input type="text" id="location" placeholder="e.g. Netherlands, Remote" />
+      </div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label style="font-weight:400; margin-bottom:4px">Extra context <span>optional</span></label>
+      <textarea id="notes" style="min-height:55px" placeholder="e.g. Career switcher from BIM engineering. AWS cert in progress."></textarea>
     </div>
   </div>
-  <input type="file" id="pdf-input" accept=".pdf" />
 
-  <div class="or-divider">or paste plain text</div>
-
-  <textarea id="resume-text" placeholder="Paste your resume text here…"></textarea>
-</div>
-
-<!-- Preferences -->
-<div class="section">
-  <label>Job Preferences</label>
-
-  <div style="margin-bottom:10px">
-    <label style="font-weight:400; margin-bottom:4px">Target Role</label>
-    <input type="text" id="target-role" placeholder="e.g. Junior Cloud Engineer" />
-  </div>
-
-  <div class="row-2">
-    <div>
-      <label style="font-weight:400; margin-bottom:4px">Seniority</label>
-      <select id="seniority">
-        <option value="Junior / Entry-level">Junior / Entry-level</option>
-        <option value="Mid-level">Mid-level</option>
-        <option value="Any">Any</option>
-      </select>
-    </div>
-    <div>
-      <label style="font-weight:400; margin-bottom:4px">Location</label>
-      <input type="text" id="location" placeholder="e.g. Netherlands, Remote" />
-    </div>
-  </div>
-
-  <div style="margin-top:10px">
-    <label style="font-weight:400; margin-bottom:4px">Extra context <span>optional</span></label>
-    <textarea id="notes" style="min-height:55px" placeholder="e.g. Career switcher from BIM engineering. AWS cert in progress."></textarea>
+  <!-- Save -->
+  <div class="section">
+    <button class="btn" id="save-btn">Save</button>
+    <div class="err hidden" id="save-err"></div>
+    <div class="ok hidden" id="save-ok"></div>
   </div>
 </div>
 
-<!-- Save -->
-<div class="section">
-  <button class="save-btn" id="save-btn">Save Settings</button>
-</div>
-
+<script src="config.js"></script>
+<script src="auth.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

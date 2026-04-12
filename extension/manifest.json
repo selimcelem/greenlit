@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "JobLens - AI Job Match Filter",
-  "version": "0.1.0",
+  "name": "Greenlit - AI Job Match Filter",
+  "version": "0.2.0",
   "description": "AI-powered job match scoring directly on LinkedIn. Green, yellow or red — instantly.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "https://api.anthropic.com/*"
+    "https://*.execute-api.eu-central-1.amazonaws.com/*",
+    "https://cognito-idp.eu-central-1.amazonaws.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
