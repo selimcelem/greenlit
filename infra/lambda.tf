@@ -93,8 +93,10 @@ resource "aws_lambda_function" "upload" {
   filename         = "${local.backend_dist}/upload.zip"
   source_code_hash = filebase64sha256("${local.backend_dist}/upload.zip")
 
-  timeout     = 10
-  memory_size = 256
+  # pdf-parse does the work in-process and can be memory-bound on larger
+  # PDFs. 512 MB / 30s leaves headroom for ~7 MB uploads without OOM.
+  timeout     = 30
+  memory_size = 512
 
   logging_config {
     log_format = "JSON"
@@ -104,6 +106,7 @@ resource "aws_lambda_function" "upload" {
   environment {
     variables = {
       RESUMES_BUCKET = aws_s3_bucket.resumes.bucket
+      USERS_TABLE    = aws_dynamodb_table.users.name
     }
   }
 }

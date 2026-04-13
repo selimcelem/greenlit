@@ -6,7 +6,7 @@
 // Tokens are stored in chrome.storage.local under `greenlit_tokens`.
 
 const STORAGE_KEY = 'greenlit_tokens';
-const cfg = () => self.GREENLIT_CONFIG;
+// `cfg` is declared in config.js and shared across this context.
 
 function endpoint() {
   return `https://cognito-idp.${cfg().cognitoRegion}.amazonaws.com/`;
@@ -24,7 +24,9 @@ async function cognito(target, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data?.message || data?.__type || `Cognito ${target} failed`;
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.code = data?.__type;
+    throw err;
   }
   return data;
 }
@@ -60,6 +62,13 @@ self.GreenlitAuth = {
       ClientId:         cfg().cognitoClientId,
       Username:         email,
       ConfirmationCode: code,
+    });
+  },
+
+  async resendConfirmationCode(email) {
+    await cognito('ResendConfirmationCode', {
+      ClientId: cfg().cognitoClientId,
+      Username: email,
     });
   },
 

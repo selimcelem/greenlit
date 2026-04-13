@@ -111,6 +111,15 @@ data "aws_iam_policy_document" "upload_inline" {
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.resumes.arn}/resumes/*"]
   }
+
+  # UpdateItem (not PutItem) so extraction merges onto the existing user row
+  # without clobbering preferences written by the profile Lambda.
+  statement {
+    sid       = "WriteResumeText"
+    effect    = "Allow"
+    actions   = ["dynamodb:UpdateItem"]
+    resources = [aws_dynamodb_table.users.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "upload_inline" {

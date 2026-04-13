@@ -2,11 +2,11 @@
 
 importScripts('config.js', 'auth.js');
 
-const cfg = () => self.GREENLIT_CONFIG;
+// `cfg` is declared in config.js and shared via the service worker's top-level scope.
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.type === 'ANALYZE_JOB') {
-    analyzeJob(request.jobId, request.jobData)
+    analyzeJob(request.jobId, request.jobData, request.force)
       .then((result) => sendResponse({ success: true, result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
@@ -38,9 +38,9 @@ async function callBackend(path, init = {}) {
   return data;
 }
 
-async function analyzeJob(jobId, jobData) {
+async function analyzeJob(jobId, jobData, force) {
   return callBackend('/analyze', {
     method: 'POST',
-    body:   JSON.stringify({ jobId, jobData }),
+    body:   JSON.stringify({ jobId, jobData, force: !!force }),
   });
 }

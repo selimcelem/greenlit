@@ -1,6 +1,9 @@
-// content.js — injects Greenlit badges into LinkedIn job pages
+// content.js — injects Greenlit badges into LinkedIn job pages.
+//
+// Scope: we only analyze the *open job detail panel*. Feed-card badges were
+// removed to avoid firing one model call per visible card on every scroll —
+// that burned tokens fast on a busy feed. Click into a job to get a badge.
 
-const JL_CACHE = new Map(); // jobId -> analysis result
 let JL_OBSERVER = null;
 
 // ─── Bootstrap ──────────────────────────────────────────────────────────────
@@ -23,25 +26,42 @@ function getAuthStatus() {
 // ─── Observer — handles LinkedIn SPA navigation ──────────────────────────────
 
 function observePage() {
-  // Run immediately for current state
-  scanPage();
-
-  // Watch for DOM changes (LinkedIn is a SPA)
-  if (JL_OBSERVER) JL_OBSERVER.disconnect();
-  JL_OBSERVER = new MutationObserver(debounce(scanPage, 600));
-  JL_OBSERVER.observe(document.body, { childList: true, subtree: true });
-}
-
-function scanPage() {
   injectDetailBadge();
-  injectFeedBadges();
+
+  // LinkedIn is a SPA, so clicking between job cards swaps the detail panel
+  // in-place rather than triggering a full page load. The observer re-runs
+  // injectDetailBadge() whenever the DOM settles so the badge reappears on
+  // the new job.
+  if (JL_OBSERVER) JL_OBSERVER.disconnect();
+  JL_OBSERVER = new MutationObserver(debounce(injectDetailBadge, 600));
+  JL_OBSERVER.observe(document.body, { childList: true, subtree: true });
 }
 
 // ─── Job Detail Page ─────────────────────────────────────────────────────────
 
 function injectDetailBadge() {
-  // Don't duplicate
-  if (document.querySelector('.jl-detail-panel')) return;
+  // Figure out what job the page is *currently* showing before we decide
+  // whether to keep or replace any existing panel. LinkedIn's SPA swaps the
+  // detail panel in place when the user clicks a different card, so a guard
+  // that just checks "does a panel exist?" would keep showing the stale
+  // result forever.
+  const jobData = extractDetailJobData();
+  if (!jobData.title || !jobData.description) return;
+
+  const currentJobId = getDetailJobId() || `${location.pathname}:${jobData.title}`;
+
+  const existing = document.querySelector('.jl-detail-panel');
+  if (existing) {
+    if (existing.dataset.jlJobId === currentJobId) {
+      // Same job as the rendered panel — leave it in place. This also
+      // prevents the MutationObserver from re-analyzing on every DOM tick.
+      return;
+    }
+    // Different job — throw away the stale panel and fall through to inject
+    // a fresh one. Any in-flight analyzeJob() holding a reference to the
+    // old panel will no-op on replaceWith(), since the node is now detached.
+    existing.remove();
+  }
 
   const titleEl = document.querySelector([
     '.jobs-unified-top-card__job-title',
@@ -53,18 +73,37 @@ function injectDetailBadge() {
 
   if (!titleEl) return;
 
-  const jobData = extractDetailJobData();
-  if (!jobData.title || !jobData.description) return;
-
-  const jobId = getDetailJobId() || `${location.pathname}:${jobData.title}`;
-
-  // Create placeholder panel immediately
-  const panel = createDetailPanel(null, 'loading');
+  // Inject an idle panel with an "Analyze" button. We do NOT fire the model
+  // call here — only the user clicking the button starts an analysis. This
+  // prevents token burn from accidentally opened jobs or passive browsing.
+  const panel = createIdlePanel(currentJobId, jobData);
+  panel.dataset.jlJobId = currentJobId;
   const insertTarget = titleEl.closest('[class*="top-card"], [class*="unified-top-card"]') || titleEl.parentElement;
   insertTarget.insertAdjacentElement('afterend', panel);
+}
 
-  // Request analysis
-  analyzeJob(jobId, jobData, panel);
+function createIdlePanel(jobId, jobData) {
+  const panel = document.createElement('div');
+  panel.className = 'jl-detail-panel jl-idle-panel';
+  panel.innerHTML = `
+    <div class="jl-idle-row">
+      <button class="jl-primary-btn jl-analyze-btn" type="button">🟢 Analyze with Greenlit</button>
+      <span class="jl-idle-hint">Score this job against your profile</span>
+    </div>`;
+  panel.querySelector('.jl-analyze-btn').addEventListener('click', () => {
+    runAnalysis(jobId, jobData, panel, false);
+  });
+  return panel;
+}
+
+// Replaces `hostPanel` with a loading panel and kicks off an analyze call.
+// `force=true` tells the backend to skip its cache read so we get a fresh
+// verdict; the result overwrites the cached entry on success.
+function runAnalysis(jobId, jobData, hostPanel, force) {
+  const loading = createDetailPanel(null, 'loading');
+  loading.dataset.jlJobId = jobId;
+  hostPanel.replaceWith(loading);
+  analyzeJob(jobId, jobData, loading, force);
 }
 
 function getDetailJobId() {
@@ -88,12 +127,6 @@ function extractDetailJobData() {
       '[class*="company-name"] a',
       '[class*="topcard__org"]'
     ],
-    location: [
-      '.jobs-unified-top-card__bullet',
-      '.job-details-jobs-unified-top-card__bullet',
-      '[class*="workplace-type"]',
-      '[class*="topcard__flavor--bullet"]'
-    ],
     description: [
       '.jobs-description__content',
       '.jobs-description-content__text',
@@ -111,11 +144,69 @@ function extractDetailJobData() {
   };
 
   return {
-    title: get(selectors.title),
-    company: get(selectors.company),
-    location: get(selectors.location),
-    description: get(selectors.description).substring(0, 4000)
+    title:           get(selectors.title),
+    company:         get(selectors.company),
+    location:        extractLocation(),
+    workArrangement: extractWorkArrangement(),
+    description:     get(selectors.description).substring(0, 4000)
   };
+}
+
+// LinkedIn's top card shows several metadata items as sibling spans: company,
+// location (e.g. "Utrecht, Nederland"), posted time, and a work-arrangement
+// badge ("Hybride", "Remote", "Op locatie", "Op afstand", "On-site"). The
+// selectors that historically hit "location" also grab the badge, so we have
+// to filter: we want whichever metadata span looks like a place name, not a
+// work-arrangement word.
+const WORK_ARRANGEMENT_TERMS = /\b(hybride|hybrid|remote|op\s?afstand|op\s?locatie|on[\s-]?site|in[\s-]?person)\b/i;
+
+function extractLocation() {
+  const topCard = document.querySelector(
+    '[class*="top-card"], [class*="unified-top-card"], [class*="job-details-jobs-unified-top-card"]',
+  );
+  if (!topCard) return '';
+
+  const candidates = topCard.querySelectorAll([
+    '.jobs-unified-top-card__bullet',
+    '.job-details-jobs-unified-top-card__bullet',
+    '.job-details-jobs-unified-top-card__primary-description-container .tvm__text',
+    '[class*="topcard__flavor--bullet"]',
+    '[class*="primary-description"] span',
+  ].join(', '));
+
+  for (const el of candidates) {
+    const text = el.textContent?.trim();
+    if (!text) continue;
+    // Skip the work-arrangement badge, applicant counts, "Posted X days ago", etc.
+    if (WORK_ARRANGEMENT_TERMS.test(text)) continue;
+    if (/\b(applicants?|sollicitanten|posted|geplaatst|ago|geleden|hours?|days?|weeks?|uren|dagen|weken)\b/i.test(text)) continue;
+    // Rough place-name heuristic: contains a letter, no forward slash, length reasonable.
+    if (!/[a-zA-Z]/.test(text)) continue;
+    if (text.length > 80) continue;
+    return text;
+  }
+  return '';
+}
+
+function extractWorkArrangement() {
+  // Explicit selectors first — when LinkedIn ships a dedicated class it's
+  // the most reliable source.
+  const explicit = document.querySelector([
+    '.job-details-jobs-unified-top-card__workplace-type',
+    '.jobs-unified-top-card__workplace-type',
+    '[class*="workplace-type"]',
+  ].join(', '));
+  if (explicit?.textContent?.trim()) return explicit.textContent.trim();
+
+  // Fallback: scan the top-card text for a known arrangement term. Covers
+  // both English ("Hybrid", "Remote", "On-site") and Dutch ("Hybride",
+  // "Op afstand", "Op locatie"), which is what the current user sees.
+  const topCard = document.querySelector(
+    '[class*="top-card"], [class*="unified-top-card"], [class*="job-details-jobs-unified-top-card"]',
+  );
+  if (!topCard) return '';
+  const match = topCard.textContent?.match(WORK_ARRANGEMENT_TERMS);
+  return match ? match[0] : '';
 }
 
 function createDetailPanel(result, state) {
@@ -132,7 +223,11 @@ function createDetailPanel(result, state) {
   }
 
   if (state === 'error') {
-    panel.innerHTML = `<div class="jl-error">⚠ Greenlit: ${result}</div>`;
+    panel.innerHTML = `
+      <div class="jl-error">⚠ Greenlit: ${result}</div>
+      <div class="jl-footer">
+        <button class="jl-secondary-btn jl-reanalyze-btn" type="button">↻ Re-analyze</button>
+      </div>`;
     return panel;
   }
 
@@ -151,6 +246,9 @@ function createDetailPanel(result, state) {
     </div>
     <div class="jl-breakdown" style="display:none">
       ${renderBreakdown(result.breakdown)}
+    </div>
+    <div class="jl-footer">
+      <button class="jl-secondary-btn jl-reanalyze-btn" type="button">↻ Re-analyze</button>
     </div>`;
 
   panel.querySelector('.jl-expand-btn').addEventListener('click', (e) => {
@@ -190,112 +288,39 @@ function renderBreakdown(b) {
   }).join('');
 }
 
-// ─── Job Feed Cards ──────────────────────────────────────────────────────────
-
-function injectFeedBadges() {
-  const cards = document.querySelectorAll([
-    'li.jobs-search-results__list-item:not([data-jl-processed])',
-    'li.scaffold-layout__list-item:not([data-jl-processed])',
-    '[data-job-id]:not([data-jl-processed])'
-  ].join(', '));
-
-  cards.forEach(card => {
-    card.setAttribute('data-jl-processed', 'true');
-    const jobId = getJobId(card);
-    if (!jobId) return;
-
-    const jobData = extractCardJobData(card);
-    if (!jobData.title) return;
-
-    // Add loading badge immediately
-    const badge = createFeedBadge(null, 'loading');
-    const insertTarget = card.querySelector('[class*="job-card-list__title"], [class*="job-card-container__link"]')?.parentElement || card.firstElementChild;
-    if (insertTarget) insertTarget.insertAdjacentElement('afterbegin', badge);
-
-    // Check cache first
-    if (JL_CACHE.has(jobId)) {
-      updateFeedBadge(badge, JL_CACHE.get(jobId));
-      return;
-    }
-
-    analyzeJobForCard(jobData, badge, jobId);
-  });
-}
-
-function getJobId(element) {
-  return element.getAttribute('data-job-id') ||
-    element.querySelector('[data-job-id]')?.getAttribute('data-job-id') ||
-    element.getAttribute('data-occludable-job-id') ||
-    Date.now().toString(); // fallback
-}
-
-function extractCardJobData(card) {
-  return {
-    title: card.querySelector('[class*="job-card-list__title"], [class*="job-card-container__link"]')?.textContent?.trim() || '',
-    company: card.querySelector('[class*="company-name"], [class*="subtitle"]')?.textContent?.trim() || '',
-    location: card.querySelector('[class*="location"], [class*="metadata-item"]')?.textContent?.trim() || '',
-    description: '' // cards don't have full description
-  };
-}
-
-function createFeedBadge(result, state) {
-  const badge = document.createElement('div');
-  badge.className = 'jl-feed-badge';
-
-  if (state === 'loading') {
-    badge.innerHTML = `<div class="jl-feed-spinner"></div>`;
-    return badge;
-  }
-
-  if (state === 'error') {
-    badge.className += ' jl-feed-error';
-    badge.textContent = '?';
-    return badge;
-  }
-
-  badge.className += ` jl-feed-${result.color}`;
-  badge.innerHTML = `<span>${result.score}</span>`;
-  badge.title = `${result.label}\n${result.shortReasons.join('\n')}`;
-  return badge;
-}
-
-function updateFeedBadge(badge, result) {
-  badge.className = `jl-feed-badge jl-feed-${result.color}`;
-  badge.innerHTML = `<span>${result.score}</span>`;
-  badge.title = `${result.label}\n${result.shortReasons?.join('\n') || ''}`;
-}
-
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
-async function analyzeJob(jobId, jobData, panel) {
+async function analyzeJob(jobId, jobData, panel, force = false) {
   try {
-    const result = await callAnalysis(jobId, jobData);
+    const result = await callAnalysis(jobId, jobData, force);
     const newPanel = createDetailPanel(result, 'done');
+    newPanel.dataset.jlJobId = jobId;
+    wireReanalyzeButton(newPanel, jobId, jobData);
     panel.replaceWith(newPanel);
   } catch (err) {
     const errPanel = createDetailPanel(err.message, 'error');
+    errPanel.dataset.jlJobId = jobId;
+    wireReanalyzeButton(errPanel, jobId, jobData);
     panel.replaceWith(errPanel);
   }
 }
 
-async function analyzeJobForCard(jobData, badge, jobId) {
-  try {
-    const result = await callAnalysis(jobId, jobData);
-    JL_CACHE.set(jobId, result);
-    updateFeedBadge(badge, result);
-  } catch (err) {
-    badge.className = 'jl-feed-badge jl-feed-error';
-    badge.textContent = '!';
-    badge.title = err.message;
-  }
+// Attach a click handler that swaps the current panel back to a loading
+// state and re-runs analysis with force=true, so the backend skips its
+// cache read and writes a fresh result over the stale entry.
+function wireReanalyzeButton(panel, jobId, jobData) {
+  const btn = panel.querySelector('.jl-reanalyze-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => runAnalysis(jobId, jobData, panel, true));
 }
 
-function callAnalysis(jobId, jobData) {
+function callAnalysis(jobId, jobData, force) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({
       type: 'ANALYZE_JOB',
       jobId,
       jobData,
+      force,
     }, (response) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       if (response?.success) resolve(response.result);

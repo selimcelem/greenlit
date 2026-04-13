@@ -2,8 +2,12 @@ resource "aws_apigatewayv2_api" "api" {
   name          = "${local.name_prefix}-api"
   protocol_type = "HTTP"
 
+  # Chrome extensions bypass CORS via host_permissions in manifest.json,
+  # so API GW origin pinning adds no protection here. Access is gated by
+  # the Cognito JWT authorizer on every route. S3 resume-bucket CORS still
+  # pins var.allowed_origins because the browser talks directly to S3.
   cors_configuration {
-    allow_origins  = var.allowed_origins
+    allow_origins  = ["*"]
     allow_methods  = ["GET", "POST", "PUT", "OPTIONS"]
     allow_headers  = ["Authorization", "Content-Type"]
     expose_headers = []

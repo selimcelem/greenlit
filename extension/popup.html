@@ -261,6 +261,9 @@
     <button class="btn" id="signup-btn">Create account</button>
     <div class="err hidden" id="signup-err"></div>
     <div class="ok hidden" id="signup-ok"></div>
+    <p style="margin-top:10px;font-size:11px;text-align:center">
+      <a id="have-code-link" style="cursor:pointer">Already have a code?</a>
+    </p>
   </div>
 
   <!-- Confirm sign up -->
@@ -271,7 +274,9 @@
       <input type="text" id="confirm-code" placeholder="123456" />
     </div>
     <button class="btn" id="confirm-btn">Confirm</button>
+    <button class="btn secondary" id="resend-btn" style="margin-top:8px">Resend code</button>
     <div class="err hidden" id="confirm-err"></div>
+    <div class="ok hidden" id="confirm-ok"></div>
   </div>
 </div>
 
@@ -330,8 +335,10 @@
     </div>
 
     <div style="margin-top:10px">
-      <label style="font-weight:400; margin-bottom:4px">Extra context <span>optional</span></label>
-      <textarea id="notes" style="min-height:55px" placeholder="e.g. Career switcher from BIM engineering. AWS cert in progress."></textarea>
+      <label style="font-weight:400; margin-bottom:4px" title="Sent to the AI along with your resume when scoring each job. Use it for anything a recruiter wouldn't see on a CV.">
+        Extra context for AI scoring <span>optional</span>
+      </label>
+      <textarea id="notes" style="min-height:55px" placeholder="e.g. I'm open to relocation, prefer remote, career switcher happy to be flexible on exact requirements..."></textarea>
     </div>
   </div>
 

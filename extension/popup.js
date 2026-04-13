@@ -1,6 +1,6 @@
 // popup.js — sign-in / profile editor for Greenlit.
 
-const cfg = () => self.GREENLIT_CONFIG;
+// `cfg` is declared in config.js and shared via the popup document's script scope.
 
 // ─── Element shortcuts ──────────────────────────────────────────────────────
 
@@ -39,6 +39,26 @@ tabs.forEach((tab) => {
   });
 });
 
+// ─── Confirm-pane helper ────────────────────────────────────────────────────
+// Opens the confirmation pane pre-loaded with the given email. If `password`
+// is provided it's stashed so the user can be auto-signed-in after confirm;
+// otherwise they're routed back to the signin pane after confirming.
+
+function showConfirmPane(email, password) {
+  $('confirm-email-label').textContent = email;
+  confirmPane.dataset.email = email;
+  if (password) confirmPane.dataset.password = password;
+  else delete confirmPane.dataset.password;
+
+  $('confirm-code').value = '';
+  $('confirm-err').classList.add('hidden');
+  $('confirm-ok').classList.add('hidden');
+
+  signinPane.classList.add('hidden');
+  signupPane.classList.add('hidden');
+  confirmPane.classList.remove('hidden');
+}
+
 // ─── Sign in ────────────────────────────────────────────────────────────────
 
 $('signin-btn').addEventListener('click', async () => {
@@ -57,6 +77,10 @@ $('signin-btn').addEventListener('click', async () => {
     await self.GreenlitAuth.signIn(email, password);
     await route();
   } catch (err) {
+    if (err.code === 'UserNotConfirmedException') {
+      showConfirmPane(email, password);
+      return;
+    }
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
   }
@@ -80,21 +104,37 @@ $('signup-btn').addEventListener('click', async () => {
 
   try {
     await self.GreenlitAuth.signUp(email, password);
-    $('confirm-email-label').textContent = email;
-    confirmPane.dataset.email = email;
-    confirmPane.dataset.password = password;
-    signupPane.classList.add('hidden');
-    confirmPane.classList.remove('hidden');
+    showConfirmPane(email, password);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
   }
 });
 
+// "Already have a code?" — jump to confirm pane without re-signing-up.
+// Uses whatever the user has typed on the signup form; if the email is
+// blank, nudge them to fill it in first.
+$('have-code-link').addEventListener('click', () => {
+  const email = $('signup-email').value.trim();
+  const password = $('signup-password').value;
+  const errEl = $('signup-err');
+  errEl.classList.add('hidden');
+
+  if (!email) {
+    errEl.textContent = 'Enter the email you signed up with, then click again.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  showConfirmPane(email, password || null);
+});
+
 $('confirm-btn').addEventListener('click', async () => {
   const code = $('confirm-code').value.trim();
   const errEl = $('confirm-err');
+  const okEl = $('confirm-ok');
   errEl.classList.add('hidden');
+  okEl.classList.add('hidden');
 
   if (!code) {
     errEl.textContent = 'Enter the code from your email.';
@@ -102,12 +142,58 @@ $('confirm-btn').addEventListener('click', async () => {
     return;
   }
 
+  const email = confirmPane.dataset.email;
+  const password = confirmPane.dataset.password;
+
   try {
-    const email = confirmPane.dataset.email;
-    const password = confirmPane.dataset.password;
     await self.GreenlitAuth.confirmSignUp(email, code);
-    await self.GreenlitAuth.signIn(email, password);
-    await route();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  if (password) {
+    try {
+      await self.GreenlitAuth.signIn(email, password);
+      await route();
+      return;
+    } catch (err) {
+      // Confirmation succeeded but auto-signin failed — fall through to the
+      // signin pane so the user can retry manually.
+    }
+  }
+
+  // No password stashed (or auto-signin failed): route back to signin.
+  confirmPane.classList.add('hidden');
+  signinPane.classList.remove('hidden');
+  tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === 'signin'));
+  $('signin-email').value = email;
+  const signinErr = $('signin-err');
+  signinErr.textContent = '';
+  signinErr.classList.add('hidden');
+});
+
+// Resend the confirmation code to whichever email is currently stashed on
+// the confirm pane. Uses the `ok` row for feedback so errors from Cognito
+// (e.g. "LimitExceededException") surface in the red row.
+$('resend-btn').addEventListener('click', async () => {
+  const email = confirmPane.dataset.email;
+  const errEl = $('confirm-err');
+  const okEl = $('confirm-ok');
+  errEl.classList.add('hidden');
+  okEl.classList.add('hidden');
+
+  if (!email) {
+    errEl.textContent = 'No email on file. Go back and enter it on the sign-up tab.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    await self.GreenlitAuth.resendConfirmationCode(email);
+    okEl.textContent = `✓ New code sent to ${email}`;
+    okEl.classList.remove('hidden');
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
@@ -205,6 +291,13 @@ $('signout-link').addEventListener('click', async () => {
 });
 
 // ─── PDF upload ─────────────────────────────────────────────────────────────
+//
+// The popup no longer parses PDFs in the browser — it ships the bytes to
+// the `upload` Lambda, which runs pdf-parse server-side, writes the original
+// to S3, and persists the extracted text to DynamoDB. The text comes back
+// in the response so we can drop it straight into the textarea.
+
+const MAX_PDF_BYTES = 7 * 1024 * 1024; // matches the Lambda's ceiling
 
 $('upload-area').addEventListener('click', () => $('pdf-input').click());
 
@@ -214,91 +307,42 @@ $('pdf-input').addEventListener('change', async (e) => {
   const uploadText = $('upload-text');
   const uploadArea = $('upload-area');
 
-  uploadText.innerHTML = '⏳ Extracting text from PDF…';
+  uploadText.innerHTML = '⏳ Uploading and parsing PDF…';
   uploadArea.classList.remove('has-file');
 
-  try {
-    const text = await extractTextFromPDF(file);
-    if (text.length < 50) throw new Error('Could not extract enough text. Paste manually.');
-    $('resume-text').value = text;
-    uploadArea.classList.add('has-file');
-    uploadText.innerHTML = `<span class="success">✓ ${file.name} — ${text.length} chars extracted</span>`;
+  if (file.size > MAX_PDF_BYTES) {
+    uploadText.innerHTML = `<strong style="color:#e74c3c">⚠ PDF is larger than ${Math.floor(MAX_PDF_BYTES / 1024 / 1024)} MB.</strong>`;
+    return;
+  }
 
-    // Best-effort: also archive the original PDF in S3.
-    try {
-      const { uploadUrl } = await callBackend('/resume/upload', { method: 'POST' });
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/pdf' },
-        body:    file,
-      });
-    } catch (uploadErr) {
-      console.warn('[Greenlit] PDF archive upload failed:', uploadErr);
-    }
+  try {
+    const buffer = await file.arrayBuffer();
+    const contentBase64 = arrayBufferToBase64(buffer);
+
+    const { resumeText, chars } = await callBackend('/resume/upload', {
+      method: 'POST',
+      body:   JSON.stringify({ filename: file.name, contentBase64 }),
+    });
+
+    $('resume-text').value = resumeText;
+    uploadArea.classList.add('has-file');
+    uploadText.innerHTML = `<span class="success">✓ ${file.name} — ${chars} chars extracted</span>`;
   } catch (err) {
     uploadText.innerHTML = `<strong style="color:#e74c3c">⚠ ${err.message}</strong><br><span style="color:#666">Paste your resume text instead.</span>`;
   }
 });
 
-// ─── PDF parser (same algorithm as the MVP) ────────────────────────────────
-
-async function extractTextFromPDF(file) {
-  const buffer = await file.arrayBuffer();
+// ArrayBuffer → base64 without blowing the call stack on larger buffers.
+// `String.fromCharCode(...bytes)` hits the argument-count limit around 100 KB,
+// so we chunk the conversion.
+function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
-  const raw = new TextDecoder('latin1').decode(bytes);
-
-  const parts = [];
-
-  const btEtRegex = /BT([\s\S]*?)ET/g;
-  let blockMatch;
-  while ((blockMatch = btEtRegex.exec(raw)) !== null) {
-    const block = blockMatch[1];
-
-    const tjRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*Tj/g;
-    let m;
-    while ((m = tjRegex.exec(block)) !== null) {
-      parts.push(decodePdfString(m[1]));
-    }
-
-    const tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
-    while ((m = tjArrRegex.exec(block)) !== null) {
-      const inner = m[1];
-      const strRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
-      let sm;
-      while ((sm = strRegex.exec(inner)) !== null) {
-        parts.push(decodePdfString(sm[1]));
-      }
-    }
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
   }
-
-  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-  let sm;
-  while ((sm = streamRegex.exec(raw)) !== null) {
-    const s = sm[1];
-    if (s.startsWith('%PDF') || s.includes('xref')) continue;
-    const printable = s.replace(/[^\x20-\x7E\n]/g, '');
-    if (printable.length > 50 && printable.length / s.length > 0.6) {
-      parts.push(printable);
-    }
-  }
-
-  return parts
-    .join(' ')
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, ' ')
-    .replace(/\\t/g, ' ')
-    .replace(/\s{3,}/g, '\n')
-    .trim();
-}
-
-function decodePdfString(s) {
-  return s
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, ' ')
-    .replace(/\\t/g, ' ')
-    .replace(/\\\\/g, '\\')
-    .replace(/\\\(/g, '(')
-    .replace(/\\\)/g, ')');
+  return btoa(binary);
 }
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
