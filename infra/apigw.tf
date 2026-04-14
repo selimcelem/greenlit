@@ -61,6 +61,20 @@ resource "aws_apigatewayv2_integration" "upload" {
   payload_format_version = "2.0"
 }
 
+resource "aws_apigatewayv2_integration" "lemon_billing" {
+  api_id                 = aws_apigatewayv2_api.api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.lemon_billing.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_integration" "lemon_webhook" {
+  api_id                 = aws_apigatewayv2_api.api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.lemon_webhook.invoke_arn
+  payload_format_version = "2.0"
+}
+
 # ── routes ──────────────────────────────────────────────────────────────────
 
 resource "aws_apigatewayv2_route" "analyze" {
@@ -95,6 +109,34 @@ resource "aws_apigatewayv2_route" "upload" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+resource "aws_apigatewayv2_route" "billing_checkout" {
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "POST /billing/checkout-session"
+  target             = "integrations/${aws_apigatewayv2_integration.lemon_billing.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "billing_portal" {
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "POST /billing/portal-session"
+  target             = "integrations/${aws_apigatewayv2_integration.lemon_billing.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+# Webhook is NOT behind the Cognito authorizer — Lemon Squeezy doesn't
+# have a Cognito token. Authentication happens inside the Lambda via
+# HMAC-SHA256 signature verification against the lemonsqueezy-webhook-secret.
+# Route name stays provider-neutral so the LS dashboard webhook URL is
+# stable if we ever add a second billing provider later.
+resource "aws_apigatewayv2_route" "billing_webhook" {
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "POST /billing/webhook"
+  target             = "integrations/${aws_apigatewayv2_integration.lemon_webhook.id}"
+  authorization_type = "NONE"
+}
+
 # ── lambda permissions ──────────────────────────────────────────────────────
 
 resource "aws_lambda_permission" "analyze" {
@@ -117,6 +159,22 @@ resource "aws_lambda_permission" "upload" {
   statement_id  = "AllowAPIGwInvokeUpload"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.upload.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "lemon_billing" {
+  statement_id  = "AllowAPIGwInvokeLemonBilling"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lemon_billing.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "lemon_webhook" {
+  statement_id  = "AllowAPIGwInvokeLemonWebhook"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lemon_webhook.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
 }

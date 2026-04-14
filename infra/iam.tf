@@ -33,6 +33,10 @@ data "aws_iam_policy_document" "analyze_inline" {
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
+      # UpdateItem is required for the quota path: incrementUsage on every
+      # successful analysis, the monthly counter reset on the 1st of each
+      # month, and the legacy-row backfill in getOrInitUser.
+      "dynamodb:UpdateItem",
     ]
     resources = [
       aws_dynamodb_table.users.arn,
@@ -77,6 +81,11 @@ data "aws_iam_policy_document" "profile_inline" {
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
+      # UpdateItem is needed because profile PUT now merges resume +
+      # preferences via UpdateCommand (was PutCommand, which clobbered the
+      # quota fields), and getOrInitUser also issues UpdateItem for legacy
+      # backfill and monthly counter resets.
+      "dynamodb:UpdateItem",
     ]
     resources = [aws_dynamodb_table.users.arn]
   }
@@ -125,4 +134,96 @@ data "aws_iam_policy_document" "upload_inline" {
 resource "aws_iam_role_policy" "upload_inline" {
   role   = aws_iam_role.upload.id
   policy = data.aws_iam_policy_document.upload_inline.json
+}
+
+# ── lemon-billing ───────────────────────────────────────────────────────────
+# Handles POST /billing/checkout-session and POST /billing/portal-session.
+# Needs Get/Put/Update on the users table (getOrInitUser on both routes)
+# and the Lemon Squeezy API key secret. Does NOT need the webhook signing
+# secret — that's verification-only and lives with the webhook Lambda.
+
+resource "aws_iam_role" "lemon_billing" {
+  name               = "${local.name_prefix}-lemon-billing"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+}
+
+data "aws_iam_policy_document" "lemon_billing_inline" {
+  statement {
+    sid    = "WriteOwnLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.lemon_billing.arn}:*"]
+  }
+
+  statement {
+    sid    = "DynamoAccess"
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [aws_dynamodb_table.users.arn]
+  }
+
+  statement {
+    sid       = "ReadLemonApiKey"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.lemon_api_key.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "lemon_billing_inline" {
+  role   = aws_iam_role.lemon_billing.id
+  policy = data.aws_iam_policy_document.lemon_billing_inline.json
+}
+
+# ── lemon-webhook ───────────────────────────────────────────────────────────
+# Handles POST /billing/webhook. Needs the webhook signing secret to verify
+# each request, the API key to re-fetch subscriptions from the LS API, and
+# UpdateItem on the users table to sync subscription state into DynamoDB.
+
+resource "aws_iam_role" "lemon_webhook" {
+  name               = "${local.name_prefix}-lemon-webhook"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+}
+
+data "aws_iam_policy_document" "lemon_webhook_inline" {
+  statement {
+    sid    = "WriteOwnLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.lemon_webhook.arn}:*"]
+  }
+
+  statement {
+    sid    = "DynamoAccess"
+    effect = "Allow"
+    actions = [
+      "dynamodb:UpdateItem",
+    ]
+    resources = [aws_dynamodb_table.users.arn]
+  }
+
+  statement {
+    sid       = "ReadLemonSecrets"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.lemon_api_key.arn,
+      aws_secretsmanager_secret.lemon_webhook.arn,
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "lemon_webhook_inline" {
+  role   = aws_iam_role.lemon_webhook.id
+  policy = data.aws_iam_policy_document.lemon_webhook_inline.json
 }

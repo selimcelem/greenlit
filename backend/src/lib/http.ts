@@ -22,6 +22,17 @@ export function bad(status: number, message: string): APIGatewayProxyResultV2 {
   };
 }
 
+// Like `bad` but for structured error payloads — quota_exceeded carries
+// extra fields (tier, limit, used, resetDate) so the extension can render a
+// proper upgrade panel without a second round-trip.
+export function json(status: number, body: unknown): APIGatewayProxyResultV2 {
+  return {
+    statusCode: status,
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    body: JSON.stringify(body),
+  };
+}
+
 export function parseJson<T = unknown>(raw: string | undefined): T | null {
   if (!raw) return null;
   try {

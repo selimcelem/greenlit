@@ -2,8 +2,8 @@ import type {
   APIGatewayProxyEventV2WithJWTAuthorizer,
   APIGatewayProxyResultV2,
 } from 'aws-lambda';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { ddb, USERS_TABLE } from '../lib/dynamo.js';
+import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { ddb, USERS_TABLE, computeUsage, getOrInitUser } from '../lib/dynamo.js';
 import { getUserId } from '../lib/auth.js';
 import { ok, bad, parseJson } from '../lib/http.js';
 import type { Preferences } from '../lib/anthropic.js';
@@ -22,12 +22,24 @@ export const handler = async (
   const method = event.requestContext.http.method;
 
   if (method === 'GET') {
-    const result = await ddb.send(
-      new GetCommand({ TableName: USERS_TABLE, Key: { userId } }),
-    );
+    // getOrInitUser doubles as the signup hook: the popup hits GET /profile
+    // immediately after sign-in, and that's where a brand-new user gets
+    // their trial-tier row written.
+    const item = await getOrInitUser(userId);
     return ok({
-      resumeText: result.Item?.resumeText ?? '',
-      preferences: result.Item?.preferences ?? {},
+      resumeText:  item.resumeText ?? '',
+      preferences: item.preferences ?? {},
+      usage:       computeUsage(item),
+      billing: {
+        // The popup uses these to decide whether to show the "Manage
+        // billing" link (requires a Lemon Squeezy customer on file) and
+        // to surface dunning state if the subscription is past_due.
+        // Field names on the response are provider-neutral so the
+        // extension never needs to know which billing backend runs.
+        hasSubscription: Boolean(item.lemonSubscriptionId),
+        hasCustomer:     Boolean(item.lemonCustomerId),
+        status:          (item.subscriptionStatus as string | undefined) ?? null,
+      },
     });
   }
 
@@ -38,14 +50,24 @@ export const handler = async (
       return bad(400, 'resumeText must be at least 50 characters');
     }
 
+    // Initialize quota fields first so the row exists with sane defaults
+    // before we update it. This also covers the (rare) case where a user
+    // hits PUT before ever calling GET.
+    await getOrInitUser(userId);
+
+    // UpdateCommand instead of PutCommand: the previous PutCommand-based
+    // implementation overwrote the entire item, which would clobber tier,
+    // lifetimeAnalyses, monthlyAnalyses, and quotaResetDate every time the
+    // user saved their preferences.
     await ddb.send(
-      new PutCommand({
+      new UpdateCommand({
         TableName: USERS_TABLE,
-        Item: {
-          userId,
-          resumeText: body.resumeText,
-          preferences: body.preferences ?? {},
-          updatedAt: new Date().toISOString(),
+        Key:       { userId },
+        UpdateExpression: 'SET resumeText = :r, preferences = :p, updatedAt = :now',
+        ExpressionAttributeValues: {
+          ':r':   body.resumeText,
+          ':p':   body.preferences ?? {},
+          ':now': new Date().toISOString(),
         },
       }),
     );

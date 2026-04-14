@@ -12,7 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, 'dist');
 const buildDir = join(distDir, 'build');
 
-const handlers = ['analyze', 'profile', 'upload'];
+const handlers = ['analyze', 'profile', 'upload', 'lemon-billing', 'lemon-webhook'];
 
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(buildDir, { recursive: true });

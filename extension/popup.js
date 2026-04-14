@@ -231,6 +231,9 @@ async function loadProfile() {
     if (p.location)   $('location').value    = p.location;
     if (p.notes)      $('notes').value       = p.notes;
 
+    renderUsage(profile.usage);
+    renderBilling(profile.billing);
+
     if (profile.resumeText) {
       statusBar.className = 'status-bar ready';
       statusText.textContent = '✓ Ready — Greenlit is active on LinkedIn jobs';
@@ -243,6 +246,70 @@ async function loadProfile() {
     statusText.textContent = err.message;
   }
 }
+
+// Renders the per-user quota row under the status bar. Trial users see a
+// lifetime counter ("X analyses remaining (lifetime)"); paid tiers see a
+// monthly counter with the next reset date. The bar gets a warning color
+// when remaining drops below 20% of limit, and red when it hits zero.
+function renderUsage(usage) {
+  const bar     = $('usage-bar');
+  const tierEl  = $('usage-tier');
+  const countEl = $('usage-counter');
+  if (!usage) {
+    bar.classList.add('hidden');
+    return;
+  }
+
+  const remaining = Math.max(0, (usage.limit ?? 0) - (usage.used ?? 0));
+  tierEl.textContent = (usage.tier || 'trial').replace(/^./, (c) => c.toUpperCase());
+
+  if (usage.resetDate) {
+    countEl.textContent = `${remaining} of ${usage.limit} remaining — resets ${formatResetDate(usage.resetDate)}`;
+  } else {
+    countEl.textContent = `${remaining} of ${usage.limit} lifetime analyses remaining`;
+  }
+
+  bar.classList.remove('hidden', 'usage-low', 'usage-out');
+  if (remaining === 0) bar.classList.add('usage-out');
+  else if (remaining <= Math.ceil(usage.limit * 0.2)) bar.classList.add('usage-low');
+}
+
+function formatResetDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+// Show the "Manage billing" link only when the user has a Stripe customer
+// on file. Trial users (who've never subscribed) don't have one, and the
+// Portal session call would fail for them — we surface the upgrade flow
+// from the content script's quota panel instead.
+function renderBilling(billing) {
+  const bar = $('billing-bar');
+  if (!billing || !billing.hasCustomer) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+}
+
+$('manage-billing-link').addEventListener('click', () => {
+  const link = $('manage-billing-link');
+  const original = link.textContent;
+  link.textContent = 'Opening…';
+  chrome.runtime.sendMessage({ type: 'OPEN_PORTAL' }, (response) => {
+    if (!response?.success) {
+      link.textContent = `Failed: ${response?.error || 'unknown'}`;
+      setTimeout(() => { link.textContent = original; }, 3000);
+    } else {
+      // Popup closes on outside click when the new tab opens; restore
+      // the original text in case it somehow stays visible.
+      link.textContent = original;
+    }
+  });
+});
 
 $('save-btn').addEventListener('click', async () => {
   const errEl = $('save-err');

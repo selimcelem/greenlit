@@ -16,6 +16,26 @@ variable "anthropic_api_key" {
   sensitive   = true
 }
 
+variable "lemonsqueezy_store_id" {
+  description = "Lemon Squeezy store ID. Found in the LS dashboard under Store settings. Stays the same between test and live mode."
+  type        = string
+}
+
+variable "lemonsqueezy_variant_id_starter" {
+  description = "LS variant ID for the Greenlit Starter (€5/mo) product. Create the product manually in the LS dashboard and paste the variant ID here."
+  type        = string
+}
+
+variable "lemonsqueezy_variant_id_pro" {
+  description = "LS variant ID for the Greenlit Pro (€10/mo) product."
+  type        = string
+}
+
+variable "lemonsqueezy_variant_id_max" {
+  description = "LS variant ID for the Greenlit Max (€20/mo) product."
+  type        = string
+}
+
 variable "allowed_origins" {
   description = "Origins allowed to call the API and PUT to the S3 resume bucket. Must be the chrome-extension://<id> origin once the extension is published. Wildcards are rejected."
   type        = list(string)

@@ -214,6 +214,43 @@
     .err { color: #e74c3c; font-size: 11px; margin-top: 6px; }
     .ok  { color: #27ae60; font-size: 11px; margin-top: 6px; }
 
+    .usage-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      font-size: 11px;
+      color: #555;
+      background: #fafafa;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .usage-bar .usage-tier {
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #0a66c2;
+    }
+
+    .usage-bar.usage-low  .usage-counter { color: #e67e22; font-weight: 600; }
+    .usage-bar.usage-out  .usage-counter { color: #e74c3c; font-weight: 600; }
+
+    .billing-bar {
+      padding: 6px 16px 8px;
+      background: #fafafa;
+      border-bottom: 1px solid #f0f0f0;
+      text-align: right;
+    }
+
+    .billing-link {
+      font-size: 11px;
+      color: #0a66c2;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .billing-link:hover { text-decoration: underline; }
+
     a { color: #0a66c2; }
   </style>
 </head>
@@ -291,6 +328,15 @@
   <div class="status-bar info" id="status-bar">
     <div class="dot"></div>
     <span id="status-text">Loading profile…</span>
+  </div>
+
+  <div class="usage-bar hidden" id="usage-bar">
+    <span class="usage-tier" id="usage-tier"></span>
+    <span class="usage-counter" id="usage-counter"></span>
+  </div>
+
+  <div class="billing-bar hidden" id="billing-bar">
+    <a class="billing-link" id="manage-billing-link">Manage billing →</a>
   </div>
 
   <!-- Resume -->

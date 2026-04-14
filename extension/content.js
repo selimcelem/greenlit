@@ -39,14 +39,17 @@ function observePage() {
 
 // ─── Job Detail Page ─────────────────────────────────────────────────────────
 
-function injectDetailBadge() {
+async function injectDetailBadge() {
   // Figure out what job the page is *currently* showing before we decide
   // whether to keep or replace any existing panel. LinkedIn's SPA swaps the
   // detail panel in place when the user clicks a different card, so a guard
   // that just checks "does a panel exist?" would keep showing the stale
   // result forever.
   const jobData = extractDetailJobData();
-  if (!jobData.title || !jobData.description) return;
+  // Title is the only hard requirement — without it we can't even key the
+  // panel. Empty/short descriptions are fine; the backend prompt has a
+  // "limited description" branch that scores best-effort from the title.
+  if (!jobData.title) return;
 
   const currentJobId = getDetailJobId() || `${location.pathname}:${jobData.title}`;
 
@@ -73,10 +76,30 @@ function injectDetailBadge() {
 
   if (!titleEl) return;
 
-  // Inject an idle panel with an "Analyze" button. We do NOT fire the model
-  // call here — only the user clicking the button starts an analysis. This
-  // prevents token burn from accidentally opened jobs or passive browsing.
-  const panel = createIdlePanel(currentJobId, jobData);
+  // Check the local result cache before deciding what to render. A hit means
+  // we've already analyzed this job within the TTL window — render the
+  // verdict directly with no /analyze call and no quota hit. The user can
+  // still force a fresh run via the Re-analyze button on the rendered panel.
+  const cached = await readCachedResult(currentJobId);
+
+  // The cache read is async, so the user may have clicked into a different
+  // job (or this very job's panel may have been injected by an earlier tick)
+  // while we were waiting. Re-check before mutating the DOM.
+  const jobIdNow = getDetailJobId() || `${location.pathname}:${jobData.title}`;
+  if (jobIdNow !== currentJobId) return;
+  if (document.querySelector('.jl-detail-panel')) return;
+
+  let panel;
+  if (cached) {
+    panel = createDetailPanel(cached, 'done');
+    wireReanalyzeButton(panel, currentJobId, jobData);
+  } else {
+    // No cache — inject an idle panel with an "Analyze" button. We do NOT
+    // fire the model call here; only the user clicking the button starts an
+    // analysis. This prevents token burn from accidentally opened jobs or
+    // passive browsing.
+    panel = createIdlePanel(currentJobId, jobData);
+  }
   panel.dataset.jlJobId = currentJobId;
   const insertTarget = titleEl.closest('[class*="top-card"], [class*="unified-top-card"]') || titleEl.parentElement;
   insertTarget.insertAdjacentElement('afterend', panel);
@@ -126,12 +149,6 @@ function extractDetailJobData() {
       '.job-details-jobs-unified-top-card__company-name',
       '[class*="company-name"] a',
       '[class*="topcard__org"]'
-    ],
-    description: [
-      '.jobs-description__content',
-      '.jobs-description-content__text',
-      '[class*="description-content"]',
-      '[class*="job-description"]'
     ]
   };
 
@@ -148,8 +165,58 @@ function extractDetailJobData() {
     company:         get(selectors.company),
     location:        extractLocation(),
     workArrangement: extractWorkArrangement(),
-    description:     get(selectors.description).substring(0, 4000)
+    description:     extractDescription().substring(0, 4000)
   };
+}
+
+// LinkedIn ships descriptions inside several different wrappers depending on
+// the page variant (logged-in vs. logged-out, A/B tests, locale). We try the
+// stable class names first, then fall back to looser attribute matches, then
+// to a "find any sufficiently large text block in the top-card container"
+// heuristic for layouts where none of the named selectors hit.
+//
+// Logging is intentionally chatty: misses are the thing we need to debug, so
+// every call records which selector matched (or didn't) and how much text it
+// pulled. The MutationObserver is debounced to ~600ms so log volume is fine.
+function extractDescription() {
+  const selectors = [
+    '.jobs-description__content',
+    '.jobs-description-content__text',
+    'article.jobs-description',
+    '.jobs-description-content',
+    'div[class*="jobs-description"]',
+    'div[class*="description-content"]',
+    'div[class*="description__text"]',
+    'div[class*="job-description"]',
+  ];
+
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    const text = el?.textContent?.trim();
+    if (text) {
+      console.log(`[Greenlit] description: matched "${sel}" (${text.length} chars)`);
+      return text;
+    }
+  }
+
+  // Last resort: scan divs inside the unified top-card container for any
+  // block of text long enough to plausibly be the description body. Some
+  // layouts wrap the description in dynamically generated class names that
+  // none of the stable selectors above can match.
+  const container = document.querySelector('.job-details-jobs-unified-top-card__container');
+  if (container) {
+    const divs = container.querySelectorAll('div');
+    for (const div of divs) {
+      const text = div.textContent?.trim() || '';
+      if (text.length > 200) {
+        console.log(`[Greenlit] description: matched container-fallback heuristic (${text.length} chars)`);
+        return text;
+      }
+    }
+  }
+
+  console.log('[Greenlit] description: no selector matched (0 chars)');
+  return '';
 }
 
 // LinkedIn's top card shows several metadata items as sibling spans: company,
@@ -293,15 +360,104 @@ function renderBreakdown(b) {
 async function analyzeJob(jobId, jobData, panel, force = false) {
   try {
     const result = await callAnalysis(jobId, jobData, force);
+    writeCachedResult(jobId, result);
     const newPanel = createDetailPanel(result, 'done');
     newPanel.dataset.jlJobId = jobId;
     wireReanalyzeButton(newPanel, jobId, jobData);
     panel.replaceWith(newPanel);
   } catch (err) {
+    // Quota-exceeded gets its own panel — a generic error message wouldn't
+    // tell the user *why* their click didn't work, and the Re-analyze button
+    // on the standard error panel would just burn another 429.
+    if (err && err.code === 'quota_exceeded' && err.quota) {
+      const quotaPanel = createQuotaPanel(err.quota);
+      quotaPanel.dataset.jlJobId = jobId;
+      panel.replaceWith(quotaPanel);
+      return;
+    }
     const errPanel = createDetailPanel(err.message, 'error');
     errPanel.dataset.jlJobId = jobId;
     wireReanalyzeButton(errPanel, jobId, jobData);
     panel.replaceWith(errPanel);
+  }
+}
+
+// Renders the "you've hit your limit" panel. Distinct from the generic error
+// panel because (a) the message needs to name the tier and the reset date,
+// (b) it must NOT show a Re-analyze button — clicking it would just hit the
+// quota check again and burn another 429, and (c) it surfaces the three
+// paid tiers inline so the user can upgrade from exactly where they got
+// blocked, rather than digging through the popup.
+function createQuotaPanel(quota) {
+  const panel = document.createElement('div');
+  panel.className = 'jl-detail-panel jl-quota-panel';
+  const tierName = formatTierName(quota.tier);
+  const resetLine = quota.resetDate
+    ? `Resets ${formatResetDate(quota.resetDate)}.`
+    : 'Trial does not reset — upgrade for monthly quota.';
+  panel.innerHTML = `
+    <div class="jl-quota-body">
+      <div class="jl-quota-title">⚠ ${tierName} quota reached</div>
+      <div class="jl-quota-sub">You've used ${quota.used} of ${quota.limit} analyses. ${resetLine}</div>
+    </div>
+    <div class="jl-tier-picker">
+      ${renderTierOption('starter', 'Starter', 3,  100,  'Good for light use')}
+      ${renderTierOption('pro',     'Pro',     6,  300,  'Most job hunters')}
+      ${renderTierOption('max',     'Max',     12, 1000, 'Power users')}
+    </div>
+    <div class="jl-quota-legal">
+      EUR, billed monthly. VAT added at checkout. Cancel anytime.
+    </div>`;
+  panel.querySelectorAll('.jl-tier-btn').forEach((btn) => {
+    btn.addEventListener('click', () => startCheckout(btn));
+  });
+  return panel;
+}
+
+function renderTierOption(tier, label, priceEur, analyses, blurb) {
+  return `
+    <button class="jl-tier-btn" type="button" data-tier="${tier}">
+      <div class="jl-tier-name">${label}</div>
+      <div class="jl-tier-price">€${priceEur}<span>/mo</span></div>
+      <div class="jl-tier-meta">${analyses} analyses</div>
+      <div class="jl-tier-blurb">${blurb}</div>
+    </button>`;
+}
+
+function startCheckout(btn) {
+  const tier = btn.dataset.tier;
+  if (!tier) return;
+  // Disable the whole tier picker while the checkout session is being
+  // created — two rapid clicks would otherwise open two Checkout tabs.
+  const picker = btn.closest('.jl-quota-panel')?.querySelector('.jl-tier-picker');
+  if (picker) {
+    picker.querySelectorAll('.jl-tier-btn').forEach((b) => b.setAttribute('disabled', 'true'));
+  }
+  btn.textContent = 'Opening…';
+  chrome.runtime.sendMessage({ type: 'OPEN_CHECKOUT', tier }, (response) => {
+    if (!response?.success) {
+      btn.textContent = `Failed: ${response?.error || 'unknown error'}`;
+      // Re-enable buttons so the user can retry another tier.
+      if (picker) {
+        picker.querySelectorAll('.jl-tier-btn').forEach((b) => b.removeAttribute('disabled'));
+      }
+    }
+    // On success the new tab opens; we leave the panel in its "Opening…"
+    // state. The user is expected to close the tab and reopen the popup
+    // per the success page copy, which triggers a fresh /profile fetch.
+  });
+}
+
+function formatTierName(tier) {
+  if (!tier) return 'Trial';
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
+function formatResetDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  } catch {
+    return iso;
   }
 }
 
@@ -323,10 +479,53 @@ function callAnalysis(jobId, jobData, force) {
       force,
     }, (response) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-      if (response?.success) resolve(response.result);
-      else reject(new Error(response?.error || 'Analysis failed'));
+      if (response?.success) return resolve(response.result);
+
+      // Quota-exceeded responses carry the structured fields the quota panel
+      // needs. Attach them to the rejected Error so the caller can branch on
+      // err.code without re-parsing strings.
+      const err = new Error(response?.error || 'Analysis failed');
+      if (response?.error === 'quota_exceeded') {
+        err.code  = 'quota_exceeded';
+        err.quota = response.quota;
+      }
+      reject(err);
     });
   });
+}
+
+// ─── Local result cache ──────────────────────────────────────────────────────
+// chrome.storage.local persists across browser sessions. We key by jobId so a
+// user returning to a previously-analyzed job sees the verdict instantly with
+// no /analyze call (and no quota hit). Entries expire after 7 days; expired
+// reads are deleted lazily, which is enough cleanup for this volume.
+
+const CACHE_PREFIX = 'gl_cache_';
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cacheKey(jobId) {
+  return `${CACHE_PREFIX}${jobId}`;
+}
+
+function readCachedResult(jobId) {
+  const key = cacheKey(jobId);
+  return new Promise(resolve => {
+    chrome.storage.local.get(key, (items) => {
+      if (chrome.runtime.lastError) return resolve(null);
+      const entry = items?.[key];
+      if (!entry || !entry.result || !entry.ts) return resolve(null);
+      if (Date.now() - entry.ts > CACHE_TTL_MS) {
+        chrome.storage.local.remove(key);
+        return resolve(null);
+      }
+      resolve(entry.result);
+    });
+  });
+}
+
+function writeCachedResult(jobId, result) {
+  if (!jobId || !result) return;
+  chrome.storage.local.set({ [cacheKey(jobId)]: { result, ts: Date.now() } });
 }
 
 // ─── Utils ───────────────────────────────────────────────────────────────────
