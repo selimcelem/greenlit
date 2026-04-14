@@ -98,11 +98,110 @@ On top of prompt caching there are two layers of result caching so we don't even
 
 **The biggest cost mistake I made and then fixed.** The first version of the content script injected a badge on every visible job card in the LinkedIn feed and fired an `/analyze` call for each. On a single scroll, that was 20+ parallel Anthropic calls. I watched my CloudWatch invocation graph spike into a wall and immediately ripped feed-card analysis out entirely. The extension now only scores the open job detail panel, and only when the user clicks an explicit "Analyze with Greenlit" button. Passive browsing is free. The MVP had the right idea (automatic badges everywhere) but the wrong cost model — I'd rather make the user click.
 
+### 5. Quota enforcement and billing-anchor-aligned resets
+
+Once the product moved beyond "just for me", I needed real quota enforcement before a signed-in user could run up a bill on my Anthropic account. The tier model is straightforward:
+
+- **Trial:** 10 analyses, lifetime cap. Never resets. This is the "try it out" tier.
+- **Starter / Pro / Max:** 100 / 300 / 1000 analyses per month. Resets monthly, aligned to the user's Lemon Squeezy billing anchor — *not* a calendar-1st global reset.
+
+The relevant state lives on the user row: `tier`, `lifetimeAnalyses`, `monthlyAnalyses`, `quotaResetDate`. The `analyze` handler checks the right counter against `TIER_LIMITS[tier].limit` before calling Claude, and if the check fails it returns a structured `429 quota_exceeded` response with `tier`, `used`, `limit`, and `resetDate` on the way out. The extension catches that specific shape and renders a dedicated upgrade panel with three tier buttons, instead of the generic error panel.
+
+**Why billing-anchor resets instead of a calendar-1st reset?** A calendar reset is simpler but unfair — someone subscribing on the 30th of the month would get one day of value before their counter rolls over. Aligning to the LS billing anchor means a user who pays on the 17th has their quota reset on the 17th of every month, regardless of calendar boundaries. The trade-off is that resets now need to be event-driven rather than time-driven: when LS fires an `invoice.paid` or `subscription_payment_success` webhook, the handler reads the subscription's new `renews_at`, writes it to `quotaResetDate`, and zeros the monthly counter.
+
+The tricky bit is making that webhook handler idempotent. LS (like Stripe) retries webhooks on failure, and `subscription_updated` can fire for reasons that have nothing to do with a period rollover — card updates, metadata changes, plan switches mid-cycle. If I blindly reset the counter on every `subscription_updated`, a user's usage would zero out every time they changed their payment method. The fix is a two-update pattern:
+
+1. An **unconditional** update for fields that always take the latest value: `tier`, `subscriptionStatus`, `lemonCustomerId`, `lemonSubscriptionId`.
+2. A **conditional** update for the counter reset, with `ConditionExpression: 'attribute_not_exists(quotaResetDate) OR quotaResetDate <> :new'`. This only fires when the stored period end differs from the new one — so replays, card updates, and out-of-order deliveries are all harmless no-ops. DynamoDB throws `ConditionalCheckFailedException` when the condition doesn't match, which I catch and treat as expected.
+
+The trial tier has its own quirk: `lifetimeAnalyses` never resets, so a user who burns their 10 trial calls, subscribes to Pro, uses it for three months, and then cancels drops back to trial with `lifetimeAnalyses = 10` already on the clock — instantly locked out. This is intentional. Resetting lifetime on cancel would create a subscribe-cancel-subscribe-cancel loop for free quota forever.
+
+### 6. Lemon Squeezy integration and the Stripe → Lemon Squeezy swap
+
+The billing system was originally built on Stripe. I wrote the full thing — checkout-session Lambda, webhook Lambda with signature verification, `automatic_tax: { enabled: true }` for EU VAT, the metadata-based lazy product/price creation pattern that Stripe's API supports beautifully — applied it to AWS, and confirmed the end-to-end worked in test mode.
+
+Then I looked at the commercial side more carefully and decided to swap the whole thing to Lemon Squeezy.
+
+**The reason was VAT compliance, not technical.** Stripe is a payment processor; *you* are the merchant of record. That means for EU B2C digital sales you need to register for VAT OSS, file quarterly returns in your home country, and handle tax-rate lookups for every EU country you sell into. Stripe Tax automates the *calculation* (for ~0.5% of revenue), but you still own the filing. For a solo side project that might do €500/month in revenue, the compliance overhead was disproportionate to the money involved.
+
+Lemon Squeezy is a Merchant of Record. They sell the product to the buyer, collect VAT at the buyer's local rate, and remit it on my behalf. Their fee is higher (~5% + €0.50 per transaction vs. Stripe's combined ~3.4%), but they absorb the entire EU tax compliance surface. For my situation the higher cut was obviously worth it.
+
+The swap itself was a good exercise in reversible infrastructure changes. I'd already applied the Stripe stack to AWS, so this wasn't just "delete some files". The Terraform plan came back with **20 creates, 20 destroys, and 4 in-place changes** — every Stripe resource coming down, every Lemon Squeezy resource going up, and the three existing non-billing Lambdas re-hashing because they shared `dynamo.ts` imports. I reviewed the plan line by line before running apply, and made one deliberate design decision while I was at it: the API routes became provider-neutral (`/billing/checkout-session`, `/billing/portal-session`, `/billing/webhook`) rather than `/lemon/*`, so the extension doesn't carry the billing provider's name in its URLs and a future swap would touch zero extension code.
+
+Lemon Squeezy's API differs from Stripe's in a couple of architectural ways worth noting:
+
+- **No lazy product creation.** Stripe's "search by metadata, create if missing" pattern works reliably for programmatic setup — you can initialize an entire catalog from a cold-start Lambda. LS's product-creation API exists but is less battle-tested, and LS integrations in the wild almost always use dashboard-created products with variant IDs baked into config. I went with the dashboard-first pattern: user creates the three products manually in the LS dashboard, pastes four IDs (store + three variants) into tfvars, and the Lambda reads them from env vars at runtime. This costs some "works identically in test and live mode" ergonomics that Stripe had, but it's more robust.
+
+- **`custom_data` on checkout replaces customer-metadata round-trips.** With Stripe, I had to create the customer object up front via the API, stamp `metadata.cognitoSub` on it, then pass the customer ID into the Checkout Session — a two-step dance that also required writing the Stripe customer ID back to DynamoDB before checkout could complete. Lemon Squeezy lets you pass arbitrary JSON into `checkout_data.custom`, and that object is echoed back on *every* webhook event for the resulting subscription via `meta.custom_data`. The LS webhook handler never does a customer-lookup round-trip — it reads `meta.custom_data.cognito_sub` straight from the event payload and the correlation is done. Simpler code, one less network call, one less thing that can fail.
+
+- **Different webhook signing algorithm.** Stripe uses a timestamp-prefixed SHA256 HMAC with a specific header format. LS uses a plain HMAC-SHA256 of the raw request body, hex-encoded, in an `X-Signature` header. The verification is about 10 lines of `node:crypto`, which is why I hand-rolled it rather than pulling in the official `@lemonsqueezy/lemonsqueezy.js` client — the client bundles a few hundred KB of code for an API surface (create checkout, retrieve subscription, retrieve customer, verify webhook) I could fit in a 150-line library file with inline types. Bundle size matters on a Lambda cold start.
+
+### 7. The IAM incident — a real production debugging story
+
+Shortly after shipping the quota system, I pulled up the extension to test an analyze call and got a generic 500 back. The extension said "Backend error 500" and — as is traditional with browser UX — the CloudWatch logs that actually explained the error were nowhere near the user-facing message. Here's the full debugging arc, because it's the single best "I know how to operate AWS in anger" moment in this project.
+
+**Step 1: get the real error.** Tailed `/aws/lambda/greenlit-analyze` for the last ten minutes. The log line that mattered:
+
+```
+AccessDeniedException: User: arn:aws:sts::…:assumed-role/greenlit-analyze/greenlit-analyze
+is not authorized to perform: dynamodb:UpdateItem on resource:
+arn:aws:dynamodb:eu-central-1:…:table/greenlit-users because no identity-based
+policy allows the dynamodb:UpdateItem action
+```
+
+Clear and specific: the analyze Lambda's assumed role was trying to call `UpdateItem` on the users table, and IAM was refusing.
+
+**Step 2: trace it to the code change.** Before the quota work, `analyze` only *read* user data — `GetItem` for the profile, `PutItem` for the cache write. The IAM policy reflected exactly that: `dynamodb:GetItem` and `dynamodb:PutItem` on both tables, nothing else. When I added the quota logic, the handler grew three new DynamoDB operations I hadn't accounted for in the policy:
+
+- `incrementUsage()` — `UpdateItem` to bump `lifetimeAnalyses` and `monthlyAnalyses` after a successful model call.
+- `getOrInitUser()`'s legacy-row backfill — `UpdateItem` to stamp default tier fields onto pre-quota user rows.
+- `getOrInitUser()`'s monthly reset logic — `UpdateItem` to zero the counter on period rollover (later removed when LS webhooks took over, but present at the time of this bug).
+
+I'd shipped the code change without updating the IAM policy. The Lambda deployed, the next real request hit the new code path, IAM rejected it, and the extension saw a 500. **This is the most classic infrastructure-as-code footgun there is:** your handler code and your IAM policy must evolve together, and it is very easy for a code change to silently outgrow the permissions that worked yesterday.
+
+**Step 3: scope the fix.** Added `"dynamodb:UpdateItem"` to the `DynamoAccess` statement in `infra/iam.tf` on the analyze Lambda's role. Also added it to the profile Lambda's role — the profile PUT handler had recently switched from `PutCommand` to `UpdateCommand` to preserve quota fields written by webhooks, and it was one `/profile` call away from hitting the same wall. Two lines in the whole file.
+
+**Step 4: verify the fix with a targeted plan.** I ran:
+
+```bash
+terraform plan \
+  -target=aws_iam_role_policy.analyze_inline \
+  -target=aws_iam_role_policy.profile_inline
+```
+
+Terraform's own warning about `-target` says it's "not for routine use, and is provided only for exceptional situations such as recovering from errors or mistakes" — which is precisely what this was. The plan came back cleanly: two in-place updates, `+ "dynamodb:UpdateItem"` added to each existing DynamoAccess statement, nothing else in the state diff.
+
+**Step 5: apply and verify live.** `terraform apply` with the same two targets. 2 changes, 0 destroys. IAM policy updates propagate to existing assumed-role sessions within seconds — unlike Lambda environment-variable updates, which take several seconds and can race with in-flight requests. The next `/analyze` call from the extension came back 200.
+
+**What I took from this, in order of importance for future me:**
+
+- **Read the error, don't guess.** The AccessDenied message names the exact principal, the exact action, and the exact resource. Every piece of information I needed was in the first log line. The instinct to start re-reading my own code before reading the error message is a time-waster that I catch myself doing every time.
+- **IAM and code must move together.** Any time a handler gains a new DynamoDB, S3, or Secrets Manager operation, the first thing I now check is whether the Lambda's IAM role already covers it. I briefly considered adding a pre-deploy script that greps Lambda source for `dynamodb:*` operations and diffs against the Terraform policy — overkill for this scale, but it's a real pattern at larger orgs and I can see why.
+- **`terraform plan -target` exists for exactly this.** Scoping the plan to the two resources that needed changing meant I could verify the blast radius was two IAM policies and nothing else. A full `plan` would have included unrelated pending changes in the diff and I'd have had to mentally filter them — slower, more error-prone. Targeted plans are explicitly for recovery situations, not routine use, and Terraform itself tells you so. But when it fits, it fits.
+- **The whole incident was ~90 seconds from "500 error" to "200 OK".** The AWS feedback loop is short enough that you can debug production in-flight, provided you have CLI access, you know where the logs live, and you don't panic.
+
+### 8. Prompt engineering and skill equivalency
+
+The model's job is to score a job posting against a resume honestly, from a career-switcher's perspective. Early versions were too literal — the model would see "5+ years of Azure" on the job and "4 years of AWS" on the resume and score it 0% on skills. That's not how a real recruiter reads either of those résumés. AWS experience transfers to Azure, C# transfers to Java, BIM engineering transfers to BIM management even if the specific tools differ.
+
+I rewrote the system instructions to include an explicit "skill equivalency" rule with concrete anchor points the model could lean on instead of guessing:
+
+- **Cloud providers.** AWS, Azure, and GCP share most of their fundamentals — IAM, networking, serverless, IaC, CI/CD, observability — and those transfer directly. A strong AWS candidate on an Azure job should score around 60–70% on skills with a note about the provider gap, not 0%. Provider-specific tooling that doesn't transfer (Entra ID specifics, AWS Organizations specifics) should be deducted from the score, not used to zero it out.
+- **Programming languages.** Score by family and paradigm similarity, with explicit reference points: C# ↔ Java ~70%, Python ↔ JavaScript ~50%, C++ ↔ Java ~30%, TypeScript ↔ JavaScript ~90%. Giving the model named anchors beats asking it to reason from first principles, every time.
+- **Domain knowledge.** A BIM engineer applying to a BIM Manager role already knows clash detection, federated models, LOD specs, IFC, coordination workflows, stakeholder dynamics — all transferable even if the specific tool (Revit vs. Tekla vs. ArchiCAD) differs. Tool-level transfer inside a domain is a real thing and the model needed permission to reason that way.
+- **A floor rule.** 0% on skills is only allowed when there is genuinely zero overlap on *any* dimension above. Anything with *some* transferable element gets partial credit plus a note explaining what transfers and what gaps remain. No more "0% incomplete posting" as a cop-out.
+
+That floor rule dovetails with a separate rule for **missing or limited job descriptions**. Before this rule, a posting where the extractor only grabbed the title would produce "score: 0, verdict: incomplete posting" — useless to the user, and not even an accurate reflection of what the model could have inferred from a senior-level job title alone. The new rule says: do a best-effort assessment from whatever is available (title, company, location, work arrangement), include a phrase like "Limited description — assessment based on title only" in `shortReasons` so the user understands why confidence is lower, and never refuse to score. On the backend side, the user-message block flags descriptions under 200 characters as `(LIMITED — only N characters available)` so the model takes the best-effort branch deterministically rather than guessing whether the input is a real short posting or a parser failure.
+
+All of these rules live in a single `SYSTEM_INSTRUCTIONS` string that goes into the cached system block, so every request pays the tokens for the instructions exactly once per 5-minute window per user. Prompt engineering stops being "writing paragraphs at the model" and starts looking a lot more like writing code: there's a spec, there are failure modes, there's a test loop, and there are anchor points you can reach for when the model is freelancing.
+
 ## What I'd do next
 
 - **Chrome Web Store release.** The extension is ready except for the store chores — screenshots at the right sizes, description, privacy disclosure, proper icon assets. This is a week of polish, not engineering.
-- **DOM selector resilience.** A richer set of fallback selectors, plus anonymous telemetry (on purpose, with an opt-out) so I know when a LinkedIn class rename has broken extraction. Right now the only way I find out is my own job hunt.
-- **Unit tests.** The prompt-building, cache logic, and LinkedIn extractors deserve tests. I've been shipping by running it on real LinkedIn pages, which is fine for solo work but will hurt the first time I break a regression.
+- **CloudWatch billing alarms.** I've got a mental model for the per-request cost, but I'd rather have a budget alarm that pages me if my Anthropic or Lemon Squeezy spend crosses a ceiling. Cheap to set up, one-time work, and it's one of the few things I'd want in place *before* a public launch rather than after.
+- **Per-user cost visibility.** Today I have aggregate Lambda invocations in CloudWatch and aggregate Anthropic spend in the Anthropic dashboard, but nothing that tells me "user X is responsible for Y% of this month's cost". A `usdCentsEstimate` field on each analyze call, summed on the user row, would give me that cheaply — and the same field doubles as an internal sanity check on the quota pricing.
+- **DOM selector resilience.** A richer set of fallback selectors, plus anonymous telemetry (opt-out, explicitly disclosed) so I know when a LinkedIn class rename has broken extraction in the field. Right now my only signal is my own job hunt.
+- **Unit tests.** The prompt-building, cache logic, quota-update idempotency, and LinkedIn extractors all deserve tests. I've been shipping by running the extension against real LinkedIn pages and real LS test-mode payments, which is fine for solo work but will hurt the first time I break a regression I don't catch manually.
 - **Multi-resume support.** Let a user store several resume profiles ("cloud engineer", "data engineer") and pick which one to score each job against, without overwriting the other. Mostly a data-model and UI change, not architecture.
 
 ## Why Terraform and not CDK or SAM
@@ -115,13 +214,34 @@ The bootstrap pattern — a separate one-shot stack with local state that create
 
 ```
 greenlit/
-├── extension/      Chrome MV3 extension — content script, service worker, popup
-├── backend/        TypeScript Lambda source, esbuild-bundled
+├── extension/             Chrome MV3 extension — content script, service worker, popup
+│   ├── content.js         LinkedIn DOM injection, result panel, chrome.storage cache
+│   ├── background.js      Service worker — Cognito auth, /analyze + billing dispatch
+│   ├── popup.{html,js}    Sign-in, profile editor, usage bar, manage-billing link
+│   ├── auth.js            Direct Cognito JSON RPC client (no SDK)
+│   └── manifest.json      MV3 manifest, host_permissions, content script matches
+│
+├── backend/               TypeScript Lambda source, esbuild-bundled
 │   └── src/
-│       ├── handlers/    analyze, profile, upload, lemon-billing, lemon-webhook
-│       └── lib/         anthropic, dynamo, lemon (REST + HMAC), auth, http helpers
-└── infra/          Terraform stack — api gateway, lambda, cognito, dynamo, s3, iam, secrets
-    └── bootstrap/  One-shot stack that creates the tfstate bucket + lock table
+│       ├── handlers/
+│       │   ├── analyze.ts        Quota-checked Claude call + DynamoDB cache
+│       │   ├── profile.ts        GET/PUT profile; surfaces usage + billing to popup
+│       │   ├── upload.ts         Server-side pdf-parse → S3 + DynamoDB
+│       │   ├── lemon-billing.ts  Lemon Squeezy checkout + customer portal sessions
+│       │   └── lemon-webhook.ts  HMAC-signed LS webhook → DynamoDB tier/quota sync
+│       └── lib/
+│           ├── anthropic.ts      Claude client + prompt-caching system block
+│           ├── dynamo.ts         Typed clients, tier model, getOrInitUser, incrementUsage
+│           ├── lemon.ts          Hand-rolled LS REST client + HMAC-SHA256 verifier
+│           ├── auth.ts           Cognito JWT helpers
+│           └── http.ts           API Gateway v2 response helpers
+│
+├── infra/                 Terraform stack — api gateway, lambda, cognito, dynamo, s3, iam, secrets
+│   ├── *.tf               One file per resource family, ~400 lines total
+│   ├── LEMONSQUEEZY.md    Dashboard setup checklist (test mode + live mode)
+│   └── bootstrap/         One-shot stack that creates the tfstate bucket + lock table
+│
+└── docs/                  GitHub Pages — static billing success/cancel landing pages
 ```
 
 ---
