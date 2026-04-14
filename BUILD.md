@@ -1,6 +1,6 @@
 # Building Greenlit
 
-Notes on how I built Greenlit — a Chrome extension that scores LinkedIn job postings against your resume using Claude — and the decisions I made along the way. This is a portfolio write-up, so it's first-person and honest about tradeoffs.
+Notes on how I built Greenlit — a Chrome extension that scores LinkedIn job postings against your resume using Claude — and the decisions I made along the way. This is a portfolio write-up, so it's first-person and honest about tradeoffs. I'd rather tell you what went wrong than pretend it all went smoothly.
 
 ## The problem
 
@@ -12,18 +12,21 @@ The first version of Greenlit was a throwaway Chrome extension with a textarea w
 
 ## Architecture
 
-What the stack looks like now:
+The current stack:
 
-- **Chrome Extension (Manifest V3), vanilla JS.** Content script on LinkedIn job pages, service worker for backend calls and auth, popup for profile editing and sign-in. The content script never touches Anthropic — it only talks to the service worker, which only talks to our backend.
-- **Three AWS Lambdas, TypeScript on arm64**, bundled with esbuild into individual zips:
-  - `analyze` — fetches the user's profile, calls Claude, caches the verdict.
-  - `profile` — GET/PUT for the user profile (resume text + preferences).
+- **Chrome Extension (Manifest V3), vanilla JS.** Content script on LinkedIn job pages, service worker for backend calls and auth, popup for profile editing, sign-in, and billing management. The content script never touches Anthropic or the billing provider — it only talks to the service worker, which only talks to our backend.
+- **Five AWS Lambdas, TypeScript on arm64**, bundled with esbuild into individual zips:
+  - `analyze` — fetches the user's profile, checks quota, calls Claude, caches the verdict.
+  - `profile` — GET/PUT for the user profile (resume text + preferences), also surfaces usage + billing state to the popup.
   - `upload` — accepts a base64-encoded PDF, runs server-side text extraction via `pdf-parse`, writes the original PDF to S3, merges the extracted text onto the user row.
-- **API Gateway v2 HTTP API** with a **Cognito JWT authorizer** on every route. No unauthenticated endpoints exist.
+  - `lemon-billing` — handles `POST /billing/checkout-session` and `POST /billing/portal-session`. Creates Lemon Squeezy checkout and customer-portal URLs, and is the only place the LS API key is used.
+  - `lemon-webhook` — handles `POST /billing/webhook`. Signature-verified, unauthenticated from a user perspective, drives tier and quota state in DynamoDB based on subscription events.
+- **API Gateway v2 HTTP API** with a **Cognito JWT authorizer** on every authenticated route. The webhook route is the only `authorization_type = "NONE"` endpoint on the API — authentication happens inside the webhook Lambda via HMAC-SHA256 signature verification before any DynamoDB write.
 - **AWS Cognito User Pool** for email + password auth. The extension talks to `cognito-idp.eu-central-1.amazonaws.com` directly via the JSON RPC API (`SignUp`, `ConfirmSignUp`, `InitiateAuth`, `ResendConfirmationCode`). No SDK, so the bundled extension stays tiny.
-- **DynamoDB** with two tables: `users` (profile + resume text, keyed on the Cognito `sub`) and `cache` (analysis results keyed on `(userId, jobId)` with a 30-day TTL on the item).
+- **DynamoDB** with two tables: `users` (profile, resume text, billing state, quota counters, keyed on the Cognito `sub`) and `cache` (analysis results keyed on `(userId, jobId)` with a 30-day TTL on the item). The extension also caches successful analyses client-side in `chrome.storage.local` with a 7-day TTL keyed on jobId — cached re-views render instantly and cost zero API calls.
 - **S3** for the raw resume PDFs. Encrypted at rest (AES256), bucket policy denies any request without TLS, public access fully blocked, versioning off because the PDFs are disposable.
-- **AWS Secrets Manager** holds the shared Anthropic API key. Lambdas fetch it once per cold start and cache it in the container for the remainder of the container's life.
+- **AWS Secrets Manager** holds three secrets: the Anthropic API key, the Lemon Squeezy API key, and the Lemon Squeezy webhook signing secret. Each Lambda gets access to only the secrets it actually needs. Values are cached per warm container so Secrets Manager round-trips only happen on cold starts.
+- **Lemon Squeezy** for payments. Hosted Checkout + Customer Portal + webhooks.
 - **Terraform** for everything. Remote state in S3 with a DynamoDB lock table — bootstrapped from a separate one-shot Terraform stack so the state bucket itself is managed as code rather than created by hand.
 
 The thing I care about most in this architecture is a single sentence: **the extension is dumb and the backend holds the keys.** Every pattern where a browser extension carries a third-party API key is one credential leak away from a billing disaster. Users trust Greenlit with a login, not a key, and that's the right contract.
@@ -32,13 +35,13 @@ The thing I care about most in this architecture is a single sentence: **the ext
 
 I tried to treat this like a real product even though it's a side project. Notes on what I did and why:
 
-**Anthropic API key in Secrets Manager.** The key is a `TF_VAR_anthropic_api_key` passed at apply time, landing in a `SecretString`. Lambdas fetch it at cold start via `secretsmanager:GetSecretValue`, cache it in a module-level variable for the container lifetime, and never persist it to disk. The key never appears in the Lambda package, the environment variables, or the logs.
+**Third-party API keys in Secrets Manager.** The Anthropic key is a `TF_VAR_anthropic_api_key` passed at apply time, landing in a `SecretString`. Lambdas fetch it at cold start via `secretsmanager:GetSecretValue`, cache it in a module-level variable for the container lifetime, and never persist it to disk. The key never appears in the Lambda package, the environment variables, or the logs. The two Lemon Squeezy secrets — API key and webhook signing secret — use the same pattern, with separate ARNs so each Lambda can be granted exactly the keys it needs. LS secret values are populated manually via `aws secretsmanager put-secret-value` after the first `terraform apply` (Terraform stores only a placeholder and ignores future changes to the value), so the real secrets never live in any tfvars file or git history.
 
-**Least-privilege IAM, one role per Lambda.** Each function has its own IAM role with an inline policy listing exactly the resources it needs by ARN. `analyze` gets GetItem/PutItem on the users and cache tables and GetSecretValue on the Anthropic secret — nothing else. `profile` gets GetItem/PutItem only on the users table. `upload` gets PutObject scoped to `resumes/*` on the resume bucket, UpdateItem on the users table, and nothing else. No Lambda in this stack has `s3:*`, `dynamodb:*`, or `logs:CreateLogGroup`. Log groups are pre-created by Terraform so the Lambdas only need `logs:PutLogEvents` on their own group.
+**Least-privilege IAM, one role per Lambda.** Each function has its own IAM role with an inline policy listing exactly the resources it needs by ARN. `analyze` gets `Get/Put/UpdateItem` on the users and cache tables plus `GetSecretValue` on the Anthropic secret. `profile` gets `Get/Put/UpdateItem` on users only. `upload` gets `s3:PutObject` scoped to `resumes/*` on the resume bucket plus `UpdateItem` on users. `lemon-billing` gets `Get/Put/UpdateItem` on users plus the LS API key. `lemon-webhook` gets `UpdateItem` on users plus both LS secrets. No Lambda in this stack has `s3:*`, `dynamodb:*`, or `logs:CreateLogGroup`. Log groups are pre-created by Terraform so the Lambdas only need `logs:PutLogEvents` on their own group.
 
 **Encrypted, private resume bucket.** AES256 at rest, TLS-only via a bucket policy that denies `s3:*` when `aws:SecureTransport` is false, public access block fully enforced. The bucket name has a random suffix so it can't be guessed.
 
-**Cognito JWT on every backend route.** API Gateway validates the token before invocation. The Lambdas read the `sub` claim off `event.requestContext.authorizer.jwt.claims` and never trust any identity field from the request body.
+**Cognito JWT on every authenticated route.** API Gateway validates the token before invocation. The Lambdas read the `sub` claim off `event.requestContext.authorizer.jwt.claims` and never trust any identity field from the request body. The only unauthenticated endpoint is `POST /billing/webhook`, which is protected by HMAC-SHA256 signature verification inside the Lambda — the raw request body is verified against the LS signing secret before any parsing or DynamoDB write. A 400 "Invalid signature" response ships back in milliseconds, before any code path that touches state.
 
 **Thoughtful CORS.** API Gateway allows `["*"]` because Chrome extensions bypass CORS entirely via `host_permissions` in the manifest — pinning the origin there adds no protection and just creates a deploy-time chicken-and-egg with the extension ID. But the S3 resume bucket CORS is pinned to the real extension ID, because the browser talks to S3 directly for the presigned PUT path and that request does honor CORS.
 
@@ -52,7 +55,7 @@ LinkedIn swaps the job detail panel in place when you click a different card —
 
 The fix was to tag each rendered panel with a `data-jl-job-id` attribute and compare it against the *current* job ID on every MutationObserver tick. If they mismatch, the stale panel gets removed and a fresh one goes in. Any in-flight analysis on the old panel becomes a no-op when it resolves, because `panel.replaceWith()` on a detached node does nothing in modern DOM. The observer is debounced at 600 ms so LinkedIn's own DOM churn doesn't trigger a re-render on every mutation.
 
-LinkedIn also uses a mix of class names (`jobs-unified-top-card__*`, `job-details-jobs-unified-top-card__*`) depending on which A/B test the user is in, so every selector has three or four fallback variants. This layer is going to break when LinkedIn renames things, and I've accepted that — when it does, it's a CSS-selector patch, not an architecture change.
+LinkedIn also uses a mix of class names (`jobs-unified-top-card__*`, `job-details-jobs-unified-top-card__*`) depending on which A/B test the user is in, so every selector has three or four fallback variants. The description extractor is the most defensive: eight named selectors in order, then a container-scan heuristic that walks every `div` inside the top-card container and picks the first one with more than 200 characters of text. Each attempt logs `[Greenlit] description: matched "<selector>" (N chars)` to the console, so when LinkedIn inevitably ships a class rename, the browser DevTools tell me which fallback caught it (or that every selector missed). This layer is going to break on some future LinkedIn refactor, and I've accepted that — when it does, it's a CSS-selector patch, not an architecture change.
 
 The location extraction got its own fun problem. The top card renders a series of bullet spans: location, work arrangement badge, posted time, applicant count. They're siblings with overlapping classes, and my first selector grabbed the "Hybride" badge as the location. I rewrote the extractor to walk candidates in order and skip anything matching a work-arrangement regex (`hybrid|remote|op afstand|op locatie|on-site|in-person`, EN + NL because I'm in the Netherlands) or a posted-time / applicant-count regex. Work arrangement then gets extracted separately and passed to the backend as its own field, which the prompt factors into the location breakdown — a remote role has near-zero location sensitivity, a strictly on-site role in a different city is a hard no.
 
@@ -83,26 +86,28 @@ I wrote a `showConfirmPane()` helper and wired three entry points to it:
 
 I also added a `ResendConfirmationCode` button on the confirm pane (and a new method on the auth module). To make error handling sane across every flow, I modified the generic Cognito RPC helper to attach `err.code = data.__type` on every thrown error, so callers can branch on the exact Cognito error type (`UserNotConfirmedException`, `CodeMismatchException`, `LimitExceededException`) instead of string-matching against the human-readable `message` field.
 
-### 4. Prompt caching and the cache strategy
+### 4. Prompt caching and a two-layer result cache
 
 Claude supports prompt caching with a 5-minute TTL on blocks marked `cache_control: { type: 'ephemeral' }`. The resume text plus the career-switcher instructions are the biggest chunk of every analysis prompt, and they're identical across every call for a given user. I structured the system block as `[SYSTEM_INSTRUCTIONS, resumeBlock]` and marked only the resume block as ephemeral. Because cache markers cover everything up to and including the marked block, this caches the entire static prefix (instructions + per-user resume) in a single chunk. Every subsequent call only pays full tokens for the job posting itself, which is small.
 
-On top of that, DynamoDB stores every successful analysis in a cache table keyed on `(userId, jobId)` with a 30-day TTL, so scrolling past the same job twice costs zero API calls. A `force: true` flag on `POST /analyze` lets the user bypass the cache read and re-run from scratch — wired to a "Re-analyze" button in the result panel. The fresh result overwrites the stale entry on the cache PUT, so I didn't need a separate cache-delete endpoint or any new IAM surface.
+On top of prompt caching there are two layers of result caching so we don't even call Claude twice for the same job:
+
+1. **Server-side:** DynamoDB stores every successful analysis in a cache table keyed on `(userId, jobId)` with a 30-day TTL, so revisiting the same job costs zero API calls. A `force: true` flag on `POST /analyze` lets the user bypass the cache and re-run from scratch — wired to a "Re-analyze" button in the result panel. The fresh result overwrites the stale entry on the cache PUT, so I didn't need a separate cache-delete endpoint or any new IAM surface.
+
+2. **Client-side:** the extension also caches results in `chrome.storage.local`, keyed on jobId, with a 7-day TTL. On navigation back to a job the extension has already analyzed, the content script renders the verdict *before* any network call — no `/analyze` round-trip, no quota charge, no cold-start delay. Cache hits are free even for paid users. The async `chrome.storage.local.get` happens inside the debounced MutationObserver tick, and I re-verify the current job ID after the await so a user clicking between cards quickly doesn't get a panel rendered for a stale job.
 
 **The biggest cost mistake I made and then fixed.** The first version of the content script injected a badge on every visible job card in the LinkedIn feed and fired an `/analyze` call for each. On a single scroll, that was 20+ parallel Anthropic calls. I watched my CloudWatch invocation graph spike into a wall and immediately ripped feed-card analysis out entirely. The extension now only scores the open job detail panel, and only when the user clicks an explicit "Analyze with Greenlit" button. Passive browsing is free. The MVP had the right idea (automatic badges everywhere) but the wrong cost model — I'd rather make the user click.
 
 ## What I'd do next
 
-- **Rate limiting per user.** A signed-in user can still hammer `/analyze` until the Anthropic bill gets ugly. The clean path is a daily usage counter field on the user row, read and enforced in the `analyze` handler before the model call, with a daily reset via a TTL or a scheduled Lambda. This is also the natural hook for the Pro tier.
 - **Chrome Web Store release.** The extension is ready except for the store chores — screenshots at the right sizes, description, privacy disclosure, proper icon assets. This is a week of polish, not engineering.
-- **Payment integration.** Stripe or Lemon Squeezy for Greenlit Pro. Webhook → DynamoDB flag on the user row → the rate-limiter reads a different limit based on the flag. Billing state stays completely off the extension.
 - **DOM selector resilience.** A richer set of fallback selectors, plus anonymous telemetry (on purpose, with an opt-out) so I know when a LinkedIn class rename has broken extraction. Right now the only way I find out is my own job hunt.
 - **Unit tests.** The prompt-building, cache logic, and LinkedIn extractors deserve tests. I've been shipping by running it on real LinkedIn pages, which is fine for solo work but will hurt the first time I break a regression.
 - **Multi-resume support.** Let a user store several resume profiles ("cloud engineer", "data engineer") and pick which one to score each job against, without overwriting the other. Mostly a data-model and UI change, not architecture.
 
 ## Why Terraform and not CDK or SAM
 
-I wanted the infra to be readable by anyone who's seen Terraform once, without pulling in a huge framework. The whole `infra/` directory is roughly 300 lines of `.tf` and it's very easy to point at and say "that's everything". CDK and SAM are more ergonomic at 10x the scale, but they're overkill for three Lambdas and they obscure the resources behind abstractions. For a solo side project I wanted the least amount of magic between me and the AWS API.
+I wanted the infra to be readable by anyone who's seen Terraform once, without pulling in a huge framework. The whole `infra/` directory is ~400 lines of `.tf` and it's very easy to point at and say "that's everything". CDK and SAM are more ergonomic at 10x the scale, but they're overkill for five Lambdas and they obscure the resources behind abstractions. For a solo side project I wanted the least amount of magic between me and the AWS API.
 
 The bootstrap pattern — a separate one-shot stack with local state that creates the S3 state bucket and DynamoDB lock table for the main stack to use — is also nice. It's lift-and-shift into any other project, and it keeps the state backend itself managed as code instead of created by hand in the console.
 
@@ -113,8 +118,8 @@ greenlit/
 ├── extension/      Chrome MV3 extension — content script, service worker, popup
 ├── backend/        TypeScript Lambda source, esbuild-bundled
 │   └── src/
-│       ├── handlers/    analyze, profile, upload
-│       └── lib/         anthropic client, dynamo client, auth helper, http helpers
+│       ├── handlers/    analyze, profile, upload, lemon-billing, lemon-webhook
+│       └── lib/         anthropic, dynamo, lemon (REST + HMAC), auth, http helpers
 └── infra/          Terraform stack — api gateway, lambda, cognito, dynamo, s3, iam, secrets
     └── bootstrap/  One-shot stack that creates the tfstate bucket + lock table
 ```

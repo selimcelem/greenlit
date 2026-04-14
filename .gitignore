@@ -1,5 +1,5 @@
 .env
-.env.local
+.env.*
 node_modules/
 *.key
 *.pem
@@ -20,3 +20,5 @@ infra/backend.hcl
 # Backend build artifacts
 backend/dist/
 backend/.esbuild-cache/
+
+greenlit.tfvars

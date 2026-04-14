@@ -12,13 +12,15 @@ Greenlit reads the LinkedIn job you're looking at, compares it against your resu
 
 ## Tech stack
 
-- **Extension:** Chrome Manifest V3 (content script + service worker + popup), vanilla JavaScript — no framework
-- **Backend:** AWS Lambda (TypeScript, Node 20, arm64) bundled with esbuild, behind API Gateway v2 HTTP API
-- **AI:** Anthropic Claude (Haiku) with prompt caching on the system instructions + resume block
-- **Auth:** AWS Cognito User Pools (email + password), JWT authorizer on every backend route
-- **Data:** DynamoDB for user profiles and the analysis cache (30-day TTL), S3 for resume PDFs
-- **Secrets:** AWS Secrets Manager holds the shared Anthropic API key — the extension never sees it
-- **Infrastructure:** Terraform, with remote state in S3 and a DynamoDB lock table
+- **Extension:** Chrome Manifest V3 (content script + service worker + popup), vanilla JavaScript — no framework. Results are cached client-side in `chrome.storage.local` with a 7-day TTL so re-views of jobs you've already analyzed are instant and free.
+- **Backend:** Five TypeScript Lambdas (Node 20, arm64), bundled with esbuild, behind API Gateway v2 HTTP API.
+- **AI:** Anthropic Claude (Haiku) with prompt caching on the system instructions + resume block.
+- **Auth:** AWS Cognito User Pools (email + password), JWT authorizer on every authenticated backend route.
+- **Data:** DynamoDB for user profiles, quota counters, and the analysis cache (30-day TTL); S3 for resume PDFs.
+- **Billing:** [Lemon Squeezy](https://www.lemonsqueezy.com/) (Merchant of Record for EU VAT) — hosted Checkout + Customer Portal + HMAC-signed webhooks that drive tier updates in DynamoDB.
+- **Quota:** Per-user tier enforcement (trial lifetime cap + paid monthly caps), with counters on the user row and billing-anchor-aligned resets driven by webhooks.
+- **Secrets:** AWS Secrets Manager holds the Anthropic API key, the Lemon Squeezy API key, and the webhook signing secret — the extension never sees any of them.
+- **Infrastructure:** Terraform, with remote state in S3 and a DynamoDB lock table.
 
 ## Install (unpacked)
 
@@ -40,10 +42,18 @@ You'll need a running backend to actually get scores. If you want to self-host t
 - No analytics, no trackers, no ad network. Greenlit doesn't know what jobs you looked at after the fact, and the browsing history stays on your machine.
 - Sign out and your local tokens are wiped. Ask and your stored profile is deleted.
 
+## Plans
+
+- **Trial — free.** 10 analyses lifetime. Enough to try it out.
+- **Starter — €3 / month.** 100 analyses per month.
+- **Pro — €6 / month.** 300 analyses per month.
+- **Max — €12 / month.** 1000 analyses per month.
+
+All paid plans are billed monthly in EUR via Lemon Squeezy, VAT included, cancel anytime. Cached re-views of jobs you've already analyzed don't count against your quota.
+
 ## Coming soon
 
 - **Chrome Web Store release** — one-click install, no developer mode required.
-- **Greenlit Pro** — $5 / month for 50 analyses per day, a persistent match history, and deeper breakdowns. The free tier keeps working for casual users.
 - **Multiple resume profiles** — swap between "cloud engineer" and "data engineer" depending on what you're applying to, without overwriting the other one.
 
 ## License
