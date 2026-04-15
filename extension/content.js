@@ -169,16 +169,34 @@ function extractDetailJobData() {
   };
 }
 
-// LinkedIn ships descriptions inside several different wrappers depending on
-// the page variant (logged-in vs. logged-out, A/B tests, locale). We try the
-// stable class names first, then fall back to looser attribute matches, then
-// to a "find any sufficiently large text block in the top-card container"
-// heuristic for layouts where none of the named selectors hit.
-//
-// Logging is intentionally chatty: misses are the thing we need to debug, so
-// every call records which selector matched (or didn't) and how much text it
-// pulled. The MutationObserver is debounced to ~600ms so log volume is fine.
+// LinkedIn list view has TWO contexts: a left-side list of job cards (each
+// containing a short snippet) and a right-side detail pane with the full
+// description. Loose selectors like div[class*="job-description"] will match
+// the snippet in a left card and return ~16 chars of garbage. So we first
+// resolve the right-side pane, then query inside it only.
+function getRightPane() {
+  const candidates = [
+    '.jobs-search__job-details',
+    '.jobs-search__job-details--container',
+    '.jobs-details',
+    '.scaffold-layout__detail',
+    '.job-view-layout',
+    '.job-details-jobs-unified-top-card__container',
+  ];
+  for (const sel of candidates) {
+    const el = document.querySelector(sel);
+    if (el) return { el, sel };
+  }
+  return { el: null, sel: null };
+}
+
 function extractDescription() {
+  const { el: pane, sel: paneSel } = getRightPane();
+  if (!pane) {
+    console.log('[Greenlit] description: no right pane found (0 chars)');
+    return '';
+  }
+
   const selectors = [
     '.jobs-description__content',
     '.jobs-description-content__text',
@@ -191,31 +209,30 @@ function extractDescription() {
   ];
 
   for (const sel of selectors) {
-    const el = document.querySelector(sel);
+    const el = pane.querySelector(sel);
     const text = el?.textContent?.trim();
+    if (text && text.length >= 100) {
+      console.log(`[Greenlit] description: matched "${sel}" inside "${paneSel}" (${text.length} chars)`);
+      return text;
+    }
     if (text) {
-      console.log(`[Greenlit] description: matched "${sel}" (${text.length} chars)`);
+      console.log(`[Greenlit] description: skipped "${sel}" — only ${text.length} chars (likely wrong context)`);
+    }
+  }
+
+  // Fallback: scan divs inside the right pane for any block long enough to
+  // plausibly be the description body. Scoped to the pane, so we won't pick
+  // up left-list snippets.
+  const divs = pane.querySelectorAll('div');
+  for (const div of divs) {
+    const text = div.textContent?.trim() || '';
+    if (text.length > 400) {
+      console.log(`[Greenlit] description: matched pane-fallback heuristic inside "${paneSel}" (${text.length} chars)`);
       return text;
     }
   }
 
-  // Last resort: scan divs inside the unified top-card container for any
-  // block of text long enough to plausibly be the description body. Some
-  // layouts wrap the description in dynamically generated class names that
-  // none of the stable selectors above can match.
-  const container = document.querySelector('.job-details-jobs-unified-top-card__container');
-  if (container) {
-    const divs = container.querySelectorAll('div');
-    for (const div of divs) {
-      const text = div.textContent?.trim() || '';
-      if (text.length > 200) {
-        console.log(`[Greenlit] description: matched container-fallback heuristic (${text.length} chars)`);
-        return text;
-      }
-    }
-  }
-
-  console.log('[Greenlit] description: no selector matched (0 chars)');
+  console.log(`[Greenlit] description: no selector matched inside "${paneSel}" (0 chars)`);
   return '';
 }
 
@@ -250,8 +267,10 @@ function extractLocation() {
     // Rough place-name heuristic: contains a letter, no forward slash, length reasonable.
     if (!/[a-zA-Z]/.test(text)) continue;
     if (text.length > 80) continue;
+    console.log(`[Greenlit] location: matched "${el.className}" → "${text}" (${text.length} chars)`);
     return text;
   }
+  console.log('[Greenlit] location: no candidate matched (0 chars)');
   return '';
 }
 
