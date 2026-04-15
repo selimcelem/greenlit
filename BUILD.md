@@ -195,10 +195,16 @@ That floor rule dovetails with a separate rule for **missing or limited job desc
 
 All of these rules live in a single `SYSTEM_INSTRUCTIONS` string that goes into the cached system block, so every request pays the tokens for the instructions exactly once per 5-minute window per user. Prompt engineering stops being "writing paragraphs at the model" and starts looking a lot more like writing code: there's a spec, there are failure modes, there's a test loop, and there are anchor points you can reach for when the model is freelancing.
 
+## Pre-launch chores I've already wrapped up
+
+A few things that aren't really "engineering challenges" but mattered for getting out of the workshop and onto a real users' machines:
+
+- **CloudWatch alarms with SNS email delivery.** Three alarms in `infra/alarms.tf`: a `AWS/Billing → EstimatedCharges > $10` alarm in `us-east-1` (the billing namespace is region-pinned), a daily Lambda-invocation cap that sums `Invocations` across every Greenlit function with `SUM(METRICS())` so new functions auto-enroll, and a per-function error-rate alarm that uses `IF(invocations > 5, 100 * errors/invocations, 0)` to avoid paging on a single failure on a sleepy function. SNS topics in both `eu-central-1` and `us-east-1` because alarms can only publish to a same-region topic.
+- **GitHub Pages landing page** at [`selimcelem.github.io/greenlit`](https://selimcelem.github.io/greenlit/), served straight from the `docs/` folder in this repo — single-file HTML, no build step. It's the link the Chrome Web Store listing will point at, and it carries the privacy policy that the store's data-disclosure form requires you to host externally. Static hosting on the same repo as the code is the cheapest, lowest-friction way to get a "real" web presence for a side project.
+- **Chrome Web Store submission package.** Privacy policy, screenshot mockups (`docs/screenshot-mock.html` + `screenshot-mock-quota.html` rendered to PNG at the store's required dimensions), 128×128 store icon, single-purpose disclosure, host-permission justifications. The actual submission is in review — most of the work was *writing* the disclosures, not zipping the bundle.
+
 ## What I'd do next
 
-- **Chrome Web Store release.** The extension is ready except for the store chores — screenshots at the right sizes, description, privacy disclosure, proper icon assets. This is a week of polish, not engineering.
-- **CloudWatch billing alarms.** I've got a mental model for the per-request cost, but I'd rather have a budget alarm that pages me if my Anthropic or Lemon Squeezy spend crosses a ceiling. Cheap to set up, one-time work, and it's one of the few things I'd want in place *before* a public launch rather than after.
 - **Per-user cost visibility.** Today I have aggregate Lambda invocations in CloudWatch and aggregate Anthropic spend in the Anthropic dashboard, but nothing that tells me "user X is responsible for Y% of this month's cost". A `usdCentsEstimate` field on each analyze call, summed on the user row, would give me that cheaply — and the same field doubles as an internal sanity check on the quota pricing.
 - **DOM selector resilience.** A richer set of fallback selectors, plus anonymous telemetry (opt-out, explicitly disclosed) so I know when a LinkedIn class rename has broken extraction in the field. Right now my only signal is my own job hunt.
 - **Unit tests.** The prompt-building, cache logic, quota-update idempotency, and LinkedIn extractors all deserve tests. I've been shipping by running the extension against real LinkedIn pages and real LS test-mode payments, which is fine for solo work but will hurt the first time I break a regression I don't catch manually.
@@ -241,7 +247,7 @@ greenlit/
 │   ├── LEMONSQUEEZY.md    Dashboard setup checklist (test mode + live mode)
 │   └── bootstrap/         One-shot stack that creates the tfstate bucket + lock table
 │
-└── docs/                  GitHub Pages — static billing success/cancel landing pages
+└── docs/                  GitHub Pages — landing page, privacy policy, billing success/cancel pages, screenshot mockups
 ```
 
 ---

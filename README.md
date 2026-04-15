@@ -24,7 +24,7 @@ Greenlit reads the LinkedIn job you're looking at, compares it against your resu
 
 ## Install (unpacked)
 
-Until the Chrome Web Store listing is live:
+Until the Chrome Web Store listing is live (submission in review):
 
 1. Clone or download this repository.
 2. Open `chrome://extensions` in Chrome and enable **Developer mode** (toggle in the top-right).
@@ -34,7 +34,11 @@ Until the Chrome Web Store listing is live:
 
 You'll need a running backend to actually get scores. If you want to self-host the full stack, see [`infra/README.md`](infra/README.md) for the Terraform deploy steps — the whole thing fits on a free-tier AWS account for personal use.
 
+There's also a small public landing page at [selimcelem.github.io/greenlit](https://selimcelem.github.io/greenlit/) (served from [`docs/`](docs/) via GitHub Pages) — that's where the Chrome Web Store listing will point on launch, and it links to the [privacy policy](https://selimcelem.github.io/greenlit/privacy.html).
+
 ## Privacy
+
+The full policy is published at [selimcelem.github.io/greenlit/privacy.html](https://selimcelem.github.io/greenlit/privacy.html) — the short version:
 
 - Your resume PDF and the extracted text are stored in AWS (S3 for the PDF, DynamoDB for the text) in `eu-central-1`, encrypted at rest. The S3 bucket is private, public access is blocked, and all traffic is TLS-only.
 - Scoring calls go to Anthropic's API. Each call sees only your resume text and the specific job posting — no identity, no account info, no tracking.

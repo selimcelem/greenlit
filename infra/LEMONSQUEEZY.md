@@ -20,9 +20,12 @@ live mode and won't appear to real buyers.
       - **Name**: `Greenlit Starter`, `Greenlit Pro`, `Greenlit Max`
       - **Type**: Subscription
       - **Interval**: Monthly
-      - **Price**: €5, €10, €20 respectively
-      - **Pricing mode**: **Tax inclusive** (so buyers pay exactly €5/€10/€20
-        out the door; LS absorbs VAT from the ticket price)
+      - **Price**: €3, €6, €12 respectively (these are the headline prices
+        the extension renders in the upgrade panel — keep them in sync with
+        `extension/content.js`'s `renderTierOption` calls)
+      - **Pricing mode**: **Tax exclusive** (the extension's quota panel
+        says "EUR, billed monthly. VAT added at checkout." — LS will add
+        the buyer's local VAT on top of the ticket price at checkout)
       - **Currency**: EUR (should match your store's base currency)
       - **Status**: Published
 
