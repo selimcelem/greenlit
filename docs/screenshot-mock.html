@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenlit — LinkedIn job screenshot mock</title>
+<meta name="viewport" content="width=1280">
+<style>
+  /* ── Page chrome — fake LinkedIn ───────────────────────────── */
+  :root {
+    --li-blue: #0a66c2;
+    --li-bg: #f4f2ee;
+    --li-card: #ffffff;
+    --li-border: #e0dfdc;
+    --li-text: #000000e6;
+    --li-muted: #00000099;
+    --li-green: #057642;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--li-bg);
+    font-family: -apple-system, 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--li-text);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Top nav */
+  .li-nav {
+    background: #fff;
+    border-bottom: 1px solid var(--li-border);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .li-nav-inner {
+    width: 1128px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .li-logo {
+    width: 34px;
+    height: 34px;
+    background: var(--li-blue);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 18px;
+    border-radius: 4px;
+    font-family: Georgia, serif;
+  }
+  .li-search {
+    background: #edf3f8;
+    border-radius: 4px;
+    padding: 8px 12px;
+    width: 280px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--li-muted);
+    font-size: 13px;
+  }
+  .li-nav-items {
+    display: flex;
+    gap: 22px;
+    margin-left: auto;
+    color: var(--li-muted);
+    font-size: 12px;
+  }
+  .li-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .li-nav-item.active { color: var(--li-text); }
+  .li-nav-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    background: #d9d9d9;
+  }
+  .li-nav-item.active .li-nav-icon { background: #444; }
+  .li-nav-item::after {
+    content: "";
+    height: 2px;
+    align-self: stretch;
+    margin-top: 3px;
+    background: transparent;
+  }
+  .li-nav-item.active::after { background: var(--li-text); }
+
+  /* Two-pane job layout */
+  .li-main {
+    width: 1128px;
+    margin: 16px auto 40px;
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 8px;
+  }
+
+  .li-results-header {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-radius: 8px 8px 0 0;
+    padding: 12px 16px;
+    border-bottom: none;
+  }
+  .li-results-header h2 {
+    font-size: 16px;
+    margin: 0 0 2px 0;
+    font-weight: 600;
+  }
+  .li-results-header p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--li-muted);
+  }
+
+  .li-job-list {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+  }
+  .li-job-card {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--li-border);
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .li-job-card:last-child { border-bottom: none; }
+  .li-job-card.selected {
+    background: #edf3f8;
+    border-left: 3px solid var(--li-blue);
+    padding-left: 13px;
+  }
+  .li-logo-sq {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    background: #e3e3e3;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #555;
+    font-size: 14px;
+  }
+  .li-logo-sq.tf  { background: linear-gradient(135deg, #0a66c2, #57b5f0); color: #fff; }
+  .li-logo-sq.cb  { background: #212121; color: #fff; }
+  .li-logo-sq.np  { background: #ff6b4a; color: #fff; }
+  .li-logo-sq.dl  { background: #1e8e3e; color: #fff; }
+  .li-job-card-body { flex: 1; min-width: 0; }
+  .li-job-card-body h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--li-blue);
+    line-height: 1.25;
+  }
+  .li-job-card.selected h3 { color: var(--li-blue); }
+  .li-job-card-body .co {
+    font-size: 13px;
+    color: var(--li-text);
+    margin-top: 2px;
+  }
+  .li-job-card-body .loc {
+    font-size: 12px;
+    color: var(--li-muted);
+    margin-top: 2px;
+  }
+  .li-job-card-body .meta {
+    font-size: 12px;
+    color: var(--li-muted);
+    margin-top: 6px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .li-dot { color: var(--li-green); font-weight: 700; }
+  .li-easy {
+    color: var(--li-muted);
+    font-size: 12px;
+  }
+  .li-easy::before {
+    content: "⚡";
+    margin-right: 2px;
+  }
+
+  /* Right pane (detail) */
+  .li-detail {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-radius: 8px;
+    min-height: 800px;
+  }
+  .li-detail-top {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--li-border);
+  }
+  .li-company-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .li-company-row .li-logo-sq { width: 32px; height: 32px; font-size: 12px; }
+  .li-company-row strong { font-size: 14px; }
+  .li-detail h1 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .li-meta-line {
+    font-size: 13px;
+    color: var(--li-muted);
+    margin-bottom: 14px;
+  }
+  .li-meta-line span { margin-right: 6px; }
+  .li-meta-line .sep { margin: 0 4px; }
+  .li-meta-line strong { color: var(--li-text); font-weight: 600; }
+  .li-pills {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .li-pill {
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    background: #eaf4ff;
+    color: #0a66c2;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .li-pill.grey { background: #f3f2ef; color: var(--li-muted); font-weight: 500; }
+  .li-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .li-btn-primary {
+    background: var(--li-blue);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .li-btn-secondary {
+    background: transparent;
+    color: var(--li-text);
+    border: 1px solid #00000066;
+    border-radius: 20px;
+    padding: 7px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .li-detail-body {
+    padding: 22px 28px 32px;
+  }
+  .li-section-h {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+  }
+  .li-detail-body p {
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0 0 12px 0;
+    color: #000000d6;
+  }
+  .li-detail-body ul {
+    margin: 0 0 12px 18px;
+    padding: 0;
+  }
+  .li-detail-body li {
+    font-size: 14px;
+    line-height: 1.55;
+    margin-bottom: 4px;
+  }
+
+  /* ── Greenlit panel — copied verbatim from extension/content.css ── */
+
+  .jl-detail-panel {
+    margin: 12px 0 20px;
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    border: 1px solid #e0e0e0;
+    background: #fff;
+  }
+  .jl-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+  }
+  .jl-detail-header.jl-yellow { background: #fffbf0; }
+  .jl-score-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .jl-score-circle.jl-yellow { background: #e67e22; }
+  .jl-header-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .jl-header-text strong {
+    font-size: 15px;
+    color: #1a1a1a;
+  }
+  .jl-header-text span {
+    font-size: 12px;
+    color: #888;
+  }
+  .jl-expand-btn {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #555;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .jl-reasons {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .jl-reason {
+    font-size: 13px;
+    color: #444;
+    line-height: 1.4;
+  }
+  .jl-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px 16px;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+  }
+  .jl-secondary-btn {
+    background: #fff;
+    color: #0a66c2;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+
+<nav class="li-nav">
+  <div class="li-nav-inner">
+    <div class="li-logo">in</div>
+    <div class="li-search">Search jobs</div>
+    <div class="li-nav-items">
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Home</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>My Network</div>
+      <div class="li-nav-item active"><div class="li-nav-icon"></div>Jobs</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Messaging</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Notifications</div>
+    </div>
+  </div>
+</nav>
+
+<main class="li-main">
+  <!-- Left pane: list of jobs -->
+  <div>
+    <div class="li-results-header">
+      <h2>Cloud engineer in Netherlands</h2>
+      <p>284 results</p>
+    </div>
+    <div class="li-job-list">
+      <div class="li-job-card selected">
+        <div class="li-logo-sq tf">TF</div>
+        <div class="li-job-card-body">
+          <h3>Junior Cloud Engineer</h3>
+          <div class="co">TechFlow BV</div>
+          <div class="loc">Amsterdam, North Holland, Netherlands (Hybrid)</div>
+          <div class="meta"><span class="li-dot">●</span> Actively reviewing applicants</div>
+          <div class="li-easy">Easy Apply</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq cb">CB</div>
+        <div class="li-job-card-body">
+          <h3>Cloud Infrastructure Engineer</h3>
+          <div class="co">Cloudburst Labs</div>
+          <div class="loc">Utrecht, Netherlands (On-site)</div>
+          <div class="meta">Posted 1 day ago · 12 applicants</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq np">NP</div>
+        <div class="li-job-card-body">
+          <h3>AWS Platform Engineer (Mid)</h3>
+          <div class="co">Northpoint Analytics</div>
+          <div class="loc">Rotterdam, Netherlands (Remote)</div>
+          <div class="meta">Posted 3 days ago · 38 applicants</div>
+          <div class="li-easy">Easy Apply</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq dl">DL</div>
+        <div class="li-job-card-body">
+          <h3>DevOps / SRE Engineer</h3>
+          <div class="co">Delft Logistics Group</div>
+          <div class="loc">Delft, Netherlands (Hybrid)</div>
+          <div class="meta">Posted 5 days ago · 63 applicants</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right pane: job detail -->
+  <div class="li-detail">
+    <div class="li-detail-top">
+      <div class="li-company-row">
+        <div class="li-logo-sq tf">TF</div>
+        <strong>TechFlow BV</strong>
+      </div>
+      <h1>Junior Cloud Engineer</h1>
+      <div class="li-meta-line">
+        <span>Amsterdam, North Holland, Netherlands</span>
+        <span class="sep">·</span>
+        <span>2 days ago</span>
+        <span class="sep">·</span>
+        <span><strong>47 applicants</strong></span>
+      </div>
+      <div class="li-pills">
+        <span class="li-pill">Hybrid</span>
+        <span class="li-pill">Full-time</span>
+        <span class="li-pill">Entry level</span>
+        <span class="li-pill grey">€3,500 – €4,500/month</span>
+        <span class="li-pill grey">51 – 200 employees</span>
+      </div>
+      <div class="li-actions">
+        <button class="li-btn-primary">Easy Apply</button>
+        <button class="li-btn-secondary">Save</button>
+      </div>
+    </div>
+
+    <div class="li-detail-body">
+      <!-- Greenlit panel injection — sits above the description, where content.js inserts it -->
+      <div class="jl-detail-panel">
+        <div class="jl-detail-header jl-yellow">
+          <div class="jl-score-circle jl-yellow">73</div>
+          <div class="jl-header-text">
+            <strong>Possible Match</strong>
+            <span>Greenlit Match Score</span>
+          </div>
+          <button class="jl-expand-btn" aria-expanded="false">Details ▾</button>
+        </div>
+        <div class="jl-reasons">
+          <div class="jl-reason">• AWS skills align well with role requirements</div>
+          <div class="jl-reason">• Location match: Amsterdam hybrid suits your NL base</div>
+          <div class="jl-reason">• Junior framing matches your career transition stage</div>
+        </div>
+        <div class="jl-footer">
+          <button class="jl-secondary-btn">↻ Re-analyze</button>
+        </div>
+      </div>
+
+      <h2 class="li-section-h">About the job</h2>
+      <p>TechFlow BV is a fast-growing Amsterdam-based SaaS company building financial-data pipelines for European fintechs. We run a small, senior platform team and are looking for a Junior Cloud Engineer to grow with us.</p>
+      <p>You'll work alongside experienced engineers on our AWS-based infrastructure, helping to maintain and evolve the platform that processes millions of transactions each day. We invest heavily in mentorship — this role is designed for someone early in their cloud career who wants to go deep.</p>
+
+      <h2 class="li-section-h">What you'll do</h2>
+      <ul>
+        <li>Build and maintain CI/CD pipelines with GitHub Actions and Terraform</li>
+        <li>Help operate our AWS environments (ECS, Lambda, RDS, S3)</li>
+        <li>Improve observability — dashboards, alerts, runbooks</li>
+        <li>Participate in on-call rotation (shared, business hours only for the first 6 months)</li>
+        <li>Pair with senior engineers on incident response and post-mortems</li>
+      </ul>
+
+      <h2 class="li-section-h">What we're looking for</h2>
+      <ul>
+        <li>0–2 years of hands-on experience with a major cloud provider (AWS preferred)</li>
+        <li>Comfort with Linux fundamentals and at least one scripting language</li>
+        <li>Familiarity with containers (Docker) and infrastructure-as-code concepts</li>
+        <li>Working proficiency in English; Dutch is a plus but not required</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

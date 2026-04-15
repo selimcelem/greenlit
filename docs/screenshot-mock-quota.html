@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenlit — quota panel screenshot mock</title>
+<meta name="viewport" content="width=1280">
+<style>
+  /* ── Page chrome — fake LinkedIn ───────────────────────────── */
+  :root {
+    --li-blue: #0a66c2;
+    --li-bg: #f4f2ee;
+    --li-card: #ffffff;
+    --li-border: #e0dfdc;
+    --li-text: #000000e6;
+    --li-muted: #00000099;
+    --li-green: #057642;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--li-bg);
+    font-family: -apple-system, 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--li-text);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .li-nav {
+    background: #fff;
+    border-bottom: 1px solid var(--li-border);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .li-nav-inner { width: 1128px; display: flex; align-items: center; gap: 8px; }
+  .li-logo {
+    width: 34px;
+    height: 34px;
+    background: var(--li-blue);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 18px;
+    border-radius: 4px;
+    font-family: Georgia, serif;
+  }
+  .li-search {
+    background: #edf3f8;
+    border-radius: 4px;
+    padding: 8px 12px;
+    width: 280px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--li-muted);
+    font-size: 13px;
+  }
+  .li-nav-items {
+    display: flex;
+    gap: 22px;
+    margin-left: auto;
+    color: var(--li-muted);
+    font-size: 12px;
+  }
+  .li-nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .li-nav-item.active { color: var(--li-text); }
+  .li-nav-icon { width: 22px; height: 22px; border-radius: 3px; background: #d9d9d9; }
+  .li-nav-item.active .li-nav-icon { background: #444; }
+  .li-nav-item::after { content: ""; height: 2px; align-self: stretch; margin-top: 3px; background: transparent; }
+  .li-nav-item.active::after { background: var(--li-text); }
+
+  .li-main {
+    width: 1128px;
+    margin: 16px auto 40px;
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 8px;
+  }
+
+  .li-results-header {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-radius: 8px 8px 0 0;
+    padding: 12px 16px;
+    border-bottom: none;
+  }
+  .li-results-header h2 { font-size: 16px; margin: 0 0 2px 0; font-weight: 600; }
+  .li-results-header p { margin: 0; font-size: 12px; color: var(--li-muted); }
+
+  .li-job-list {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+  }
+  .li-job-card { padding: 14px 16px; border-bottom: 1px solid var(--li-border); display: flex; gap: 12px; cursor: pointer; }
+  .li-job-card:last-child { border-bottom: none; }
+  .li-job-card.selected { background: #edf3f8; border-left: 3px solid var(--li-blue); padding-left: 13px; }
+  .li-logo-sq {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    background: #e3e3e3;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #555;
+    font-size: 14px;
+  }
+  .li-logo-sq.tf { background: linear-gradient(135deg, #0a66c2, #57b5f0); color: #fff; }
+  .li-logo-sq.cb { background: #212121; color: #fff; }
+  .li-logo-sq.np { background: #ff6b4a; color: #fff; }
+  .li-logo-sq.dl { background: #1e8e3e; color: #fff; }
+  .li-job-card-body { flex: 1; min-width: 0; }
+  .li-job-card-body h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--li-blue); line-height: 1.25; }
+  .li-job-card-body .co { font-size: 13px; color: var(--li-text); margin-top: 2px; }
+  .li-job-card-body .loc { font-size: 12px; color: var(--li-muted); margin-top: 2px; }
+  .li-job-card-body .meta { font-size: 12px; color: var(--li-muted); margin-top: 6px; }
+  .li-dot { color: var(--li-green); font-weight: 700; }
+  .li-easy { color: var(--li-muted); font-size: 12px; }
+  .li-easy::before { content: "⚡"; margin-right: 2px; }
+
+  .li-detail {
+    background: var(--li-card);
+    border: 1px solid var(--li-border);
+    border-radius: 8px;
+    min-height: 800px;
+  }
+  .li-detail-top {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--li-border);
+  }
+  .li-company-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .li-company-row .li-logo-sq { width: 32px; height: 32px; font-size: 12px; }
+  .li-company-row strong { font-size: 14px; }
+  .li-detail h1 { margin: 0 0 10px 0; font-size: 24px; font-weight: 600; line-height: 1.2; }
+  .li-meta-line { font-size: 13px; color: var(--li-muted); margin-bottom: 14px; }
+  .li-meta-line .sep { margin: 0 4px; }
+  .li-meta-line strong { color: var(--li-text); font-weight: 600; }
+  .li-pills { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .li-pill {
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    background: #eaf4ff;
+    color: #0a66c2;
+    font-weight: 600;
+  }
+  .li-pill.grey { background: #f3f2ef; color: var(--li-muted); font-weight: 500; }
+  .li-actions { display: flex; gap: 8px; }
+  .li-btn-primary { background: var(--li-blue); color: #fff; border: none; border-radius: 20px; padding: 8px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .li-btn-secondary { background: transparent; color: var(--li-text); border: 1px solid #00000066; border-radius: 20px; padding: 7px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+  .li-detail-body { padding: 22px 28px 32px; }
+  .li-section-h { font-size: 16px; font-weight: 600; margin: 0 0 10px 0; }
+  .li-detail-body p { font-size: 14px; line-height: 1.55; margin: 0 0 12px 0; color: #000000d6; }
+  .li-detail-body ul { margin: 0 0 12px 18px; padding: 0; }
+  .li-detail-body li { font-size: 14px; line-height: 1.55; margin-bottom: 4px; }
+
+  /* ── Greenlit quota panel — copied verbatim from extension/content.css ── */
+
+  .jl-detail-panel {
+    margin: 12px 0 20px;
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    border: 1px solid #e0e0e0;
+    background: #fff;
+  }
+  .jl-quota-panel { border-color: #f1c40f; }
+  .jl-quota-body {
+    padding: 14px 16px;
+    background: #fffbe6;
+  }
+  .jl-quota-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #b7791f;
+    margin-bottom: 4px;
+  }
+  .jl-quota-sub {
+    font-size: 12px;
+    color: #5a4a1a;
+    line-height: 1.4;
+  }
+  .jl-tier-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #fff;
+    border-top: 1px solid #f1e4b0;
+  }
+  .jl-tier-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 8px;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .jl-tier-btn.highlighted {
+    border-color: #0a66c2;
+    background: #f0f7ff;
+  }
+  .jl-tier-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0a66c2;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .jl-tier-price { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+  .jl-tier-price span { font-size: 11px; font-weight: 400; color: #8a949f; margin-left: 2px; }
+  .jl-tier-meta { font-size: 11px; font-weight: 600; color: #27ae60; }
+  .jl-tier-blurb { font-size: 10px; color: #8a949f; text-align: center; line-height: 1.3; }
+  .jl-quota-legal {
+    padding: 8px 16px 12px;
+    font-size: 10px;
+    color: #8a949f;
+    text-align: center;
+    background: #fff;
+  }
+</style>
+</head>
+<body>
+
+<nav class="li-nav">
+  <div class="li-nav-inner">
+    <div class="li-logo">in</div>
+    <div class="li-search">Search jobs</div>
+    <div class="li-nav-items">
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Home</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>My Network</div>
+      <div class="li-nav-item active"><div class="li-nav-icon"></div>Jobs</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Messaging</div>
+      <div class="li-nav-item"><div class="li-nav-icon"></div>Notifications</div>
+    </div>
+  </div>
+</nav>
+
+<main class="li-main">
+  <div>
+    <div class="li-results-header">
+      <h2>Cloud engineer in Netherlands</h2>
+      <p>284 results</p>
+    </div>
+    <div class="li-job-list">
+      <div class="li-job-card selected">
+        <div class="li-logo-sq tf">TF</div>
+        <div class="li-job-card-body">
+          <h3>Junior Cloud Engineer</h3>
+          <div class="co">TechFlow BV</div>
+          <div class="loc">Amsterdam, North Holland, Netherlands (Hybrid)</div>
+          <div class="meta"><span class="li-dot">●</span> Actively reviewing applicants</div>
+          <div class="li-easy">Easy Apply</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq cb">CB</div>
+        <div class="li-job-card-body">
+          <h3>Cloud Infrastructure Engineer</h3>
+          <div class="co">Cloudburst Labs</div>
+          <div class="loc">Utrecht, Netherlands (On-site)</div>
+          <div class="meta">Posted 1 day ago · 12 applicants</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq np">NP</div>
+        <div class="li-job-card-body">
+          <h3>AWS Platform Engineer (Mid)</h3>
+          <div class="co">Northpoint Analytics</div>
+          <div class="loc">Rotterdam, Netherlands (Remote)</div>
+          <div class="meta">Posted 3 days ago · 38 applicants</div>
+          <div class="li-easy">Easy Apply</div>
+        </div>
+      </div>
+      <div class="li-job-card">
+        <div class="li-logo-sq dl">DL</div>
+        <div class="li-job-card-body">
+          <h3>DevOps / SRE Engineer</h3>
+          <div class="co">Delft Logistics Group</div>
+          <div class="loc">Delft, Netherlands (Hybrid)</div>
+          <div class="meta">Posted 5 days ago · 63 applicants</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="li-detail">
+    <div class="li-detail-top">
+      <div class="li-company-row">
+        <div class="li-logo-sq tf">TF</div>
+        <strong>TechFlow BV</strong>
+      </div>
+      <h1>Junior Cloud Engineer</h1>
+      <div class="li-meta-line">
+        Amsterdam, North Holland, Netherlands
+        <span class="sep">·</span>
+        2 days ago
+        <span class="sep">·</span>
+        <strong>47 applicants</strong>
+      </div>
+      <div class="li-pills">
+        <span class="li-pill">Hybrid</span>
+        <span class="li-pill">Full-time</span>
+        <span class="li-pill">Entry level</span>
+        <span class="li-pill grey">€3,500 – €4,500/month</span>
+        <span class="li-pill grey">51 – 200 employees</span>
+      </div>
+      <div class="li-actions">
+        <button class="li-btn-primary">Easy Apply</button>
+        <button class="li-btn-secondary">Save</button>
+      </div>
+    </div>
+
+    <div class="li-detail-body">
+      <!-- Greenlit quota panel -->
+      <div class="jl-detail-panel jl-quota-panel">
+        <div class="jl-quota-body">
+          <div class="jl-quota-title">⚠ Free trial quota reached</div>
+          <div class="jl-quota-sub">You've used 5 of 5 analyses. Trial does not reset — upgrade for monthly quota.</div>
+        </div>
+        <div class="jl-tier-picker">
+          <button class="jl-tier-btn" type="button">
+            <div class="jl-tier-name">Starter</div>
+            <div class="jl-tier-price">€3<span>/mo</span></div>
+            <div class="jl-tier-meta">100 analyses</div>
+            <div class="jl-tier-blurb">Good for light use</div>
+          </button>
+          <button class="jl-tier-btn highlighted" type="button">
+            <div class="jl-tier-name">Pro</div>
+            <div class="jl-tier-price">€6<span>/mo</span></div>
+            <div class="jl-tier-meta">300 analyses</div>
+            <div class="jl-tier-blurb">Most job hunters</div>
+          </button>
+          <button class="jl-tier-btn" type="button">
+            <div class="jl-tier-name">Max</div>
+            <div class="jl-tier-price">€12<span>/mo</span></div>
+            <div class="jl-tier-meta">1000 analyses</div>
+            <div class="jl-tier-blurb">Power users</div>
+          </button>
+        </div>
+        <div class="jl-quota-legal">
+          EUR, billed monthly. VAT added at checkout. Cancel anytime.
+        </div>
+      </div>
+
+      <h2 class="li-section-h">About the job</h2>
+      <p>TechFlow BV is a fast-growing Amsterdam-based SaaS company building financial-data pipelines for European fintechs. We run a small, senior platform team and are looking for a Junior Cloud Engineer to grow with us.</p>
+      <p>You'll work alongside experienced engineers on our AWS-based infrastructure, helping to maintain and evolve the platform that processes millions of transactions each day. We invest heavily in mentorship — this role is designed for someone early in their cloud career who wants to go deep.</p>
+
+      <h2 class="li-section-h">What you'll do</h2>
+      <ul>
+        <li>Build and maintain CI/CD pipelines with GitHub Actions and Terraform</li>
+        <li>Help operate our AWS environments (ECS, Lambda, RDS, S3)</li>
+        <li>Improve observability — dashboards, alerts, runbooks</li>
+        <li>Participate in on-call rotation (shared, business hours only for the first 6 months)</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
