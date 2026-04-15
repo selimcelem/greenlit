@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Greenlit — Privacy Policy</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1a1a1a;
+      background: #f7f9fb;
+    }
+    main {
+      min-height: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 48px 16px;
+      box-sizing: border-box;
+    }
+    .card {
+      max-width: 720px;
+      width: 100%;
+      background: #fff;
+      border: 1px solid #e4e8ec;
+      border-radius: 12px;
+      padding: 40px 48px;
+      box-shadow: 0 4px 16px rgba(10, 25, 45, 0.06);
+      box-sizing: border-box;
+    }
+    .logo {
+      font-size: 36px;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      color: #0a66c2;
+      text-align: center;
+    }
+    .updated {
+      text-align: center;
+      font-size: 12px;
+      color: #8a949f;
+      margin-bottom: 28px;
+    }
+    h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 26px 0 8px;
+      color: #1a1a1a;
+    }
+    p, li {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #4a5560;
+    }
+    p { margin: 8px 0; }
+    ul { margin: 8px 0 8px 20px; padding: 0; }
+    li { margin-bottom: 4px; }
+    a {
+      color: #0a66c2;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    .footer {
+      margin-top: 32px;
+      padding-top: 18px;
+      border-top: 1px solid #e4e8ec;
+      font-size: 12px;
+      color: #8a949f;
+      text-align: center;
+    }
+    @media (max-width: 560px) {
+      .card { padding: 28px 22px; }
+      main  { padding: 24px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="logo">🟢</div>
+      <h1>Privacy Policy</h1>
+      <div class="updated">Last updated: 15 April 2026</div>
+
+      <p>Greenlit is a Chrome extension that scores LinkedIn job postings against your background so you can spot the jobs worth your time. This page explains what data Greenlit handles, where it lives, and what we do and don't do with it.</p>
+
+      <h2>What we collect</h2>
+      <p>Greenlit only stores the minimum it needs to score jobs for you:</p>
+      <ul>
+        <li><strong>Your resume.</strong> When you upload a PDF resume, we extract the text and keep it associated with your account so we can compare it to job postings. The original PDF file is also stored in a private, encrypted S3 bucket in eu-central-1 that only the Greenlit backend can read. It's kept until you delete your account. If you upload a new resume, the previous PDF version is retained for up to 90 days before being permanently removed.</li>
+        <li><strong>Your job preferences.</strong> Free-form notes you write in the extension popup — desired roles, locations, deal-breakers, anything you want the scorer to weigh.</li>
+        <li><strong>Your email address and account identifier.</strong> Handled by Amazon Cognito, which is our authentication provider. We see your email (so we can recognize your account and contact you if needed) and a Cognito-assigned user ID. We never see or store your password.</li>
+        <li><strong>Usage counters.</strong> Per-month quota usage so we can enforce tier limits (e.g. 300 analyses/month on Pro). This is just a number, not a log of which jobs you looked at.</li>
+      </ul>
+      <p>We do <em>not</em> store the full text of job postings you analyze. Job descriptions are sent to the scoring model in-flight and are not kept afterwards.</p>
+
+      <h2>Where your data is stored</h2>
+      <p>All account data lives in Amazon Web Services in the <strong>eu-central-1</strong> region (Frankfurt, Germany). Data is encrypted at rest using AWS-managed keys, and encrypted in transit via HTTPS everywhere. Nothing is replicated outside the EU.</p>
+
+      <h2>How we use your data</h2>
+      <p>Your resume text and preferences are used for exactly one purpose: generating match scores for job postings you choose to analyze. We send the relevant pieces to Anthropic's Claude API to produce the score and reasons, and the response comes back to you. We do not use your data to train models, profile you, or build any other product.</p>
+
+      <h2>What we don't do</h2>
+      <ul>
+        <li>We do not sell your data. Not to advertisers, not to recruiters, not to data brokers, not to anyone.</li>
+        <li>We do not share your data with third parties except the sub-processors strictly needed to run the service: AWS (hosting), Anthropic (scoring model), Amazon Cognito (login), and Lemon Squeezy (payments).</li>
+        <li>We do not track you across the web. The extension only runs on LinkedIn job pages.</li>
+        <li>We do not retain job postings you analyze, and we do not build a history of what you looked at.</li>
+      </ul>
+
+      <h2>Payments</h2>
+      <p>Paid subscriptions are handled entirely by <a href="https://www.lemonsqueezy.com/" target="_blank" rel="noopener">Lemon Squeezy</a>, who act as our merchant of record. When you upgrade to a paid tier, your card details, billing address, and tax information go directly to Lemon Squeezy — Greenlit never sees them and never stores them. We only receive a subscription identifier and status so we know which tier to grant you. Lemon Squeezy's own privacy policy governs how they handle that payment data.</p>
+
+      <h2>Deleting your account</h2>
+      <p>You can delete your account and all associated data at any time by emailing <a href="mailto:selim.celem@gmail.com">selim.celem@gmail.com</a> from the address you signed up with. We'll remove your resume text, your original resume PDF, preferences, email, and usage records from our systems. If you have an active paid subscription, cancel it from the extension popup first (or ask us to cancel it as part of the deletion) so you're not billed again.</p>
+
+      <h2>Your rights</h2>
+      <p>If you're in the EU or UK, GDPR gives you the right to access, correct, export, or delete your personal data, and to object to processing. To exercise any of these, email the address below. We'll respond within 30 days.</p>
+
+      <h2>Changes to this policy</h2>
+      <p>If we change how Greenlit handles data, we'll update this page and bump the "Last updated" date at the top. Material changes will be announced in the extension before they take effect.</p>
+
+      <h2>Contact</h2>
+      <p>Questions, concerns, or data requests: <a href="mailto:selim.celem@gmail.com">selim.celem@gmail.com</a>.</p>
+
+      <div class="footer">Greenlit · Built by Selim Celem</div>
+    </div>
+  </main>
+</body>
+</html>
