@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Greenlit — AI job match scoring for LinkedIn</title>
+  <meta name="description" content="Greenlit is a Chrome extension that scores LinkedIn job postings against your resume so you can skip the bad fits and focus on the real ones." />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1a1a1a;
+      background: #f7f9fb;
+    }
+    main {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      box-sizing: border-box;
+    }
+    .card {
+      max-width: 520px;
+      width: 100%;
+      background: #fff;
+      border: 1px solid #e4e8ec;
+      border-radius: 12px;
+      padding: 40px 36px 32px;
+      box-shadow: 0 4px 16px rgba(10, 25, 45, 0.06);
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .logo { font-size: 44px; margin-bottom: 4px; line-height: 1; }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      color: #0a66c2;
+      letter-spacing: -0.2px;
+    }
+    .tagline {
+      font-size: 15px;
+      color: #4a5560;
+      margin: 0 0 22px;
+    }
+    .bullets {
+      list-style: none;
+      padding: 0;
+      margin: 22px 0 28px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bullets li {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #4a5560;
+      padding-left: 26px;
+      position: relative;
+    }
+    .bullets li::before {
+      content: "✓";
+      position: absolute;
+      left: 4px;
+      top: 0;
+      color: #27ae60;
+      font-weight: 700;
+    }
+    .cta {
+      display: inline-block;
+      background: #0a66c2;
+      color: #fff;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }
+    .cta:hover { background: #084e96; }
+    .footer {
+      margin-top: 26px;
+      padding-top: 18px;
+      border-top: 1px solid #e4e8ec;
+      font-size: 12px;
+      color: #8a949f;
+    }
+    .footer a {
+      color: #8a949f;
+      text-decoration: none;
+    }
+    .footer a:hover { color: #0a66c2; text-decoration: underline; }
+    .footer .sep {
+      display: inline-block;
+      margin: 0 8px;
+      color: #d5dae0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="logo">🟢</div>
+      <h1>Greenlit</h1>
+      <p class="tagline">AI job match scoring for LinkedIn</p>
+
+      <ul class="bullets">
+        <li>Scores every LinkedIn job you open against your resume and preferences, right inside the job page.</li>
+        <li>Explains the score in plain English — which skills match, where the gaps are, and whether the location and seniority fit.</li>
+        <li>Skip the bad fits in seconds and spend your time on the jobs actually worth applying to.</li>
+      </ul>
+
+      <!-- TODO: replace PLACEHOLDER_EXTENSION_ID once the Web Store listing is live -->
+      <a class="cta" href="https://chrome.google.com/webstore/detail/greenlit/PLACEHOLDER_EXTENSION_ID">
+        Install from Chrome Web Store
+      </a>
+
+      <div class="footer">
+        <a href="privacy.html">Privacy</a>
+        <span class="sep">·</span>
+        <a href="mailto:selim.celem@gmail.com">selim.celem@gmail.com</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
