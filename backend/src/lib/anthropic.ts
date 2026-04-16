@@ -125,6 +125,86 @@ CORE RULES
       - Score 0% on SKILLS only when there is NO overlap on any dimension above (no cloud, no language family, no domain). If ANY transferable skill, knowledge, or experience exists, the score must reflect it, and the note must specifically name what transfers and what gaps remain.
       - This rule sets a floor for the SKILLS percent only. It does NOT override Rule 1 — direct years of experience in the target field cannot be conjured from skill equivalency.
 
+WORKED EXAMPLES
+
+The examples below show the reasoning that produces a correct score. They are not templates to copy — they are calibration anchors. When the candidate and posting resemble one of these, the output should land in the same band for the same reasons.
+
+Example A — career switcher, unrelated field, senior target role (RED)
+  Posting: "Senior Cloud Engineer, 5+ years AWS, led migrations, Kubernetes, Python"
+  Candidate: 8 years BIM/construction, AWS Solutions Architect Associate cert (2025), two personal projects on AWS, no production cloud role, no Kubernetes.
+  Correct score: 25–35 (red). Experience breakdown match=false. Skills ~40–50% (AWS fundamentals + Python transfer, but no K8s and no migration leadership). Seniority match=false (explicit senior, candidate is pre-junior in target field). shortReasons must name: (a) 5+ year gap on direct AWS, (b) missing Kubernetes, (c) "led migrations" is a leadership claim the candidate cannot make yet.
+  Wrong way: scoring 55 because "8 years of engineering experience" counts as transferable. It does not. Rule 1 forbids this exact pattern.
+
+Example B — same domain, lateral move (GREEN)
+  Posting: "BIM Coordinator, Revit/Navisworks, federated models, ISO 19650, 3+ years BIM experience"
+  Candidate: 8 years BIM engineer, daily Revit + Navisworks, led clash detection on three projects, ISO 19650 certified.
+  Correct score: 80–90 (green). Experience match=true (same domain, carve-out in Rule 1 applies). Skills 85–95%. Seniority match=true. Location per work arrangement.
+  Wrong way: discounting domain experience as "not cloud/software" when the target role is explicitly BIM. Rule 1's carve-out exists precisely because domain matches domain.
+
+Example C — cloud provider cross-over (YELLOW)
+  Posting: "Azure DevOps Engineer, 3+ years Azure, Bicep, Azure DevOps Pipelines, Entra ID"
+  Candidate: 3 years AWS DevOps, Terraform, GitHub Actions, CloudFormation, IAM. No Azure exposure.
+  Correct score: 55–65 (yellow). Experience match=true on the years. Skills 60–70% per Rule 7a: IaC concepts, pipeline concepts, IAM concepts all transfer; Azure-specific surface (Bicep syntax, Entra specifics, Azure DevOps UI) is the visible gap. Seniority match=true.
+  Wrong way: scoring 30 because "the keywords don't match." Keyword match is not the assignment — skill transfer is. Scoring 85 is also wrong; provider-specific tooling IS a real gap, just not a total block.
+
+Example D — junior title, senior description (flag the mismatch)
+  Posting title: "Junior Cloud Engineer". Description: "3+ years AWS production experience, own incident response, mentor juniors."
+  Candidate: 0 years cloud, cert-only.
+  Correct score: 30–40 (red/low-yellow). The "junior" label is marketing. The actual requirements are mid-level. Experience match=false. shortReasons MUST include a line like "Title says 'Junior' but description demands 3+ years and mentoring duties — treat as mid-level."
+  Wrong way: scoring 70 because the title says junior. Trust the description over the label when they contradict.
+
+CAREER-SWITCHER EDGE CASES
+
+Certs without production experience
+  A candidate with AWS/Azure/GCP associate-level certs but zero production years has studied the concepts but not carried a pager, debugged a real outage, or shipped anything to users. Certs count for Skills (modestly, 30–50%) but NEVER substitute for years in Experience. A posting that demands "3+ years production cloud" is a hard-no even with three certs.
+
+Projects and side-work
+  Meaningful personal/side projects (infrastructure on a real cloud account with public URLs, open-source contributions with merged PRs, detailed write-ups) are stronger signal than certs but still weaker than paid production years. Treat them as evidence toward the Skills percent, not toward the Experience years count.
+
+Adjacent-field transfers within tech
+  A backend engineer moving into DevOps/SRE/Platform: the years DO count partially (maybe 60–70% of each year) if the work involved deployment, on-call, or infrastructure touches. Pure application-only backend (no deploy, no ops) counts less. Be specific in the note about which aspects transfer.
+
+Multi-cloud vs single-cloud specialists
+  A candidate who has shallowly touched all three major clouds (some AWS, some Azure, some GCP) is NOT 3x more valuable than a deep AWS specialist. Depth beats breadth for most senior/staff roles. For junior roles the breadth helps signal adaptability. Weight accordingly.
+
+Language-family mismatches
+  A Python-only candidate applying to a "Java, 5+ years" role should not score 0% on language — Python↔Java is ~40–50% per Rule 7b (both OOP, both widely used in enterprise, though runtime and idioms differ). Score them on the family transfer, and name the specific rewrite cost (type system adjustment, build tooling).
+
+Domain knowledge that survives tool changes
+  Revit ↔ ArchiCAD ↔ Tekla: the specific software differs, but the underlying domain model (3D parametric modeling, families, sheets, coordination) is shared. A strong Revit user picks up ArchiCAD in weeks, not years. Reflect this in Skills. The same logic applies across many domains: SQL dialects (Postgres ↔ MySQL ↔ SQL Server), container orchestrators (ECS ↔ K8s ↔ Nomad — smaller overlap but real), CI systems (GitHub Actions ↔ GitLab CI ↔ Jenkins).
+
+Gap years and career breaks
+  If the candidate's resume shows a career break, do not penalize for it. Score on the skills and experience the candidate actually has. If the candidate is re-entering after a break, that's context for shortReasons (optional), not a scoring input.
+
+Over-qualified candidates
+  If the candidate's direct experience clearly exceeds what the posting asks for (e.g. 8 years cloud applying to a 2-year role), that is still a match — not a mismatch. Do not penalize seniority upward. Flag in shortReasons only if the comp/title suggests a step down the candidate might not want.
+
+COMMON MISTAKES TO AVOID
+
+Do not count unrelated-field years as technical experience
+  "The candidate has 10 years of experience, so they match the 5-year requirement" is wrong when those 10 years are in a different field. Rule 1 forbids this. The years count only if the field matches.
+
+Do not score 0% on Skills when transfer exists
+  0% means "zero overlap on any dimension." If the candidate knows any cloud, any language in the same family, or any relevant domain — the score is not 0. Rule 7d is the floor; use it.
+
+Do not refuse to score on thin descriptions
+  If the description is short, score anyway from title + company + location. Rule 6 exists because a refused score is useless to the candidate. Lower confidence is fine; a blank verdict is not.
+
+Do not pad shortReasons with vague filler
+  "Some requirements may not be fully met" is useless. Name the specific gap: "No Kubernetes experience listed; role requires it as a daily-driver tool." Every shortReason should name a concrete fact that came from the posting and a concrete fact about the candidate.
+
+Do not invert the rule hierarchy
+  Experience years are a HARD gate for senior roles. No amount of "transferable" soft skills or "enthusiasm" compensates for a 5-year direct-experience gap on a senior posting. Rule 2 is aggressive on purpose.
+
+Do not let the candidate's preference override the posting's requirements
+  If the candidate says "I want senior roles" but the posting is clearly junior, the seniority match is about the ROLE's fit for the candidate, not the other way around. A senior candidate applying to a junior role is a seniority mismatch in the "over-qualified" direction — note it, but it's usually yellow, not red.
+
+Do not confuse work arrangement and location
+  "Hybrid in Amsterdam" is not the same as "Remote". A candidate in Berlin matches a remote Amsterdam role but NOT a hybrid Amsterdam role. Rule 3 is explicit about this; apply it.
+
+Do not hallucinate requirements not in the posting
+  If the posting doesn't mention Kubernetes, do not score the candidate on Kubernetes. Score against what the posting actually asks for. If the posting is thin, Rule 6 applies — say the confidence is lower, don't invent requirements.
+
 Respond ONLY with a valid JSON object, no markdown, no explanation, exactly this shape:
 {
   "score": <number 0-100>,
@@ -173,14 +253,24 @@ Work arrangement: ${jobData.workArrangement || 'Not specified'}
 ${descriptionSection}`;
 
   const client = await getClient();
+  const t0 = Date.now();
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 800,
+    max_tokens: 700,
     system: [
       { type: 'text', text: SYSTEM_INSTRUCTIONS },
       { type: 'text', text: resumeBlock, cache_control: { type: 'ephemeral' } },
     ],
     messages: [{ role: 'user', content: userBlock }],
+  });
+  const elapsedMs = Date.now() - t0;
+  // Log usage so CloudWatch shows whether the cache breakpoint actually hit.
+  // cache_read_input_tokens > 0 on repeat calls means caching is working.
+  console.log('anthropic.scoreJob', {
+    elapsedMs,
+    model: MODEL,
+    usage: response.usage,
+    stop_reason: response.stop_reason,
   });
 
   const textBlock = response.content.find((b) => b.type === 'text');
