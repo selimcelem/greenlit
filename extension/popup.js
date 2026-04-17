@@ -12,20 +12,52 @@ const profileView = $('profile-view');
 const signinPane  = $('signin-pane');
 const signupPane  = $('signup-pane');
 const confirmPane = $('confirm-pane');
+const forgotPane  = $('forgot-pane');
+const resetPane   = $('reset-pane');
 
 const tabs = document.querySelectorAll('.auth-tab');
+
+// ─── Auth-step persistence ──────────────────────────────────────────────────
+// The popup unmounts every time it closes, so in-memory pane state is lost.
+// To keep mid-flow users on the right screen when they reopen, we persist
+// {step, email} under `greenlit_auth_step`. Written on entry to forgot/reset,
+// cleared on any path back to sign-in.
+
+const AUTH_STEP_KEY = 'greenlit_auth_step';
+
+async function saveAuthStep(step, email) {
+  await chrome.storage.local.set({ [AUTH_STEP_KEY]: { step, email } });
+}
+
+async function clearAuthStep() {
+  await chrome.storage.local.remove(AUTH_STEP_KEY);
+}
+
+async function loadAuthStep() {
+  const data = await chrome.storage.local.get(AUTH_STEP_KEY);
+  return data[AUTH_STEP_KEY] || null;
+}
 
 // ─── View routing ───────────────────────────────────────────────────────────
 
 async function route() {
   const signedIn = await self.GreenlitAuth.isSignedIn();
   if (signedIn) {
+    await clearAuthStep();
     authView.classList.add('hidden');
     profileView.classList.remove('hidden');
     await loadProfile();
-  } else {
-    profileView.classList.add('hidden');
-    authView.classList.remove('hidden');
+    return;
+  }
+
+  profileView.classList.add('hidden');
+  authView.classList.remove('hidden');
+
+  const saved = await loadAuthStep();
+  if (saved?.step === 'forgot') {
+    showForgotPane(saved.email || '');
+  } else if (saved?.step === 'reset') {
+    showResetPane(saved.email || '');
   }
 }
 
@@ -36,8 +68,68 @@ tabs.forEach((tab) => {
     signinPane.classList.toggle('hidden', which !== 'signin');
     signupPane.classList.toggle('hidden', which !== 'signup');
     confirmPane.classList.add('hidden');
+    forgotPane.classList.add('hidden');
+    resetPane.classList.add('hidden');
+    clearAuthStep();
   });
 });
+
+// Route back to the sign-in pane, optionally with a success message prefilled
+// (used after a password reset so the user lands with feedback + their email).
+// Also clears any stashed auth-step so the popup doesn't bounce the user
+// back into forgot/reset on next open.
+function backToSignin({ email, successMessage } = {}) {
+  clearAuthStep();
+
+  confirmPane.classList.add('hidden');
+  forgotPane.classList.add('hidden');
+  resetPane.classList.add('hidden');
+  signupPane.classList.add('hidden');
+  signinPane.classList.remove('hidden');
+  tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === 'signin'));
+
+  const signinErr = $('signin-err');
+  const signinOk  = $('signin-ok');
+  signinErr.classList.add('hidden');
+  signinErr.textContent = '';
+  signinOk.classList.add('hidden');
+  signinOk.textContent = '';
+
+  if (email) $('signin-email').value = email;
+  if (successMessage) {
+    signinOk.textContent = successMessage;
+    signinOk.classList.remove('hidden');
+  }
+}
+
+// ─── Forgot / reset pane helpers ────────────────────────────────────────────
+// Centralized so both user-initiated clicks and auto-restore-on-open take the
+// same path (and persist the same state).
+
+function showForgotPane(email) {
+  $('forgot-email').value = email || '';
+  $('forgot-err').classList.add('hidden');
+  signinPane.classList.add('hidden');
+  signupPane.classList.add('hidden');
+  confirmPane.classList.add('hidden');
+  resetPane.classList.add('hidden');
+  forgotPane.classList.remove('hidden');
+  saveAuthStep('forgot', email || '');
+}
+
+function showResetPane(email) {
+  $('reset-email-label').textContent = email || '';
+  resetPane.dataset.email = email || '';
+  $('reset-code').value = '';
+  $('reset-password').value = '';
+  $('reset-err').classList.add('hidden');
+  signinPane.classList.add('hidden');
+  signupPane.classList.add('hidden');
+  confirmPane.classList.add('hidden');
+  forgotPane.classList.add('hidden');
+  resetPane.classList.remove('hidden');
+  saveAuthStep('reset', email || '');
+}
 
 // ─── Confirm-pane helper ────────────────────────────────────────────────────
 // Opens the confirmation pane pre-loaded with the given email. If `password`
@@ -165,13 +257,7 @@ $('confirm-btn').addEventListener('click', async () => {
   }
 
   // No password stashed (or auto-signin failed): route back to signin.
-  confirmPane.classList.add('hidden');
-  signinPane.classList.remove('hidden');
-  tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === 'signin'));
-  $('signin-email').value = email;
-  const signinErr = $('signin-err');
-  signinErr.textContent = '';
-  signinErr.classList.add('hidden');
+  backToSignin({ email });
 });
 
 // Resend the confirmation code to whichever email is currently stashed on
@@ -198,6 +284,81 @@ $('resend-btn').addEventListener('click', async () => {
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
   }
+});
+
+// ─── Forgot password ────────────────────────────────────────────────────────
+
+// "Forgot password?" from the sign-in pane. Prefills whatever email the user
+// already typed so they don't have to retype it.
+$('forgot-password-link').addEventListener('click', () => {
+  showForgotPane($('signin-email').value.trim());
+});
+
+$('forgot-cancel-btn').addEventListener('click', () => backToSignin());
+
+$('forgot-btn').addEventListener('click', async () => {
+  const email = $('forgot-email').value.trim();
+  const errEl = $('forgot-err');
+  errEl.classList.add('hidden');
+
+  if (!email) {
+    errEl.textContent = 'Enter your email.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    await self.GreenlitAuth.forgotPassword(email);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  showResetPane(email);
+});
+
+// "Already have a code?" on the forgot pane — mirrors the signup flow's
+// equivalent link. Jumps to the reset pane without requesting a new code,
+// which matters when the user already got a code but closed the popup.
+$('forgot-have-code-link').addEventListener('click', () => {
+  const email = $('forgot-email').value.trim();
+  const errEl = $('forgot-err');
+  errEl.classList.add('hidden');
+
+  if (!email) {
+    errEl.textContent = 'Enter the email you requested the code for, then click again.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  showResetPane(email);
+});
+
+$('reset-cancel-btn').addEventListener('click', () => backToSignin());
+
+$('reset-btn').addEventListener('click', async () => {
+  const email = resetPane.dataset.email;
+  const code = $('reset-code').value.trim();
+  const newPassword = $('reset-password').value;
+  const errEl = $('reset-err');
+  errEl.classList.add('hidden');
+
+  if (!code || !newPassword) {
+    errEl.textContent = 'Code and new password required.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    await self.GreenlitAuth.confirmForgotPassword(email, code, newPassword);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  backToSignin({ email, successMessage: '✓ Password reset — sign in with your new password' });
 });
 
 // ─── Profile load / save ────────────────────────────────────────────────────

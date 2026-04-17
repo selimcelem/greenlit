@@ -283,6 +283,41 @@
     </div>
     <button class="btn" id="signin-btn">Sign in</button>
     <div class="err hidden" id="signin-err"></div>
+    <div class="ok hidden" id="signin-ok"></div>
+    <p style="margin-top:10px;font-size:11px;text-align:center">
+      <a id="forgot-password-link" style="cursor:pointer">Forgot password?</a>
+    </p>
+  </div>
+
+  <!-- Forgot password: request a reset code -->
+  <div class="section hidden" id="forgot-pane">
+    <p style="margin-bottom:10px;color:#555">Enter your email and we'll send you a reset code.</p>
+    <div class="form-row">
+      <label>Email</label>
+      <input type="email" id="forgot-email" placeholder="you@example.com" />
+    </div>
+    <button class="btn" id="forgot-btn">Send reset code</button>
+    <button class="btn secondary" id="forgot-cancel-btn" style="margin-top:8px">Back to sign in</button>
+    <div class="err hidden" id="forgot-err"></div>
+    <p style="margin-top:10px;font-size:11px;text-align:center">
+      <a id="forgot-have-code-link" style="cursor:pointer">Already have a code?</a>
+    </p>
+  </div>
+
+  <!-- Forgot password: enter code + new password -->
+  <div class="section hidden" id="reset-pane">
+    <p style="margin-bottom:10px;color:#555">We sent a code to <strong id="reset-email-label"></strong>. Enter it along with your new password.</p>
+    <div class="form-row">
+      <label>Verification code</label>
+      <input type="text" id="reset-code" placeholder="123456" />
+    </div>
+    <div class="form-row">
+      <label>New password <span>10+ chars, upper, lower, number</span></label>
+      <input type="password" id="reset-password" />
+    </div>
+    <button class="btn" id="reset-btn">Reset password</button>
+    <button class="btn secondary" id="reset-cancel-btn" style="margin-top:8px">Back to sign in</button>
+    <div class="err hidden" id="reset-err"></div>
   </div>
 
   <!-- Sign up -->

@@ -72,6 +72,22 @@ self.GreenlitAuth = {
     });
   },
 
+  async forgotPassword(email) {
+    await cognito('ForgotPassword', {
+      ClientId: cfg().cognitoClientId,
+      Username: email,
+    });
+  },
+
+  async confirmForgotPassword(email, code, newPassword) {
+    await cognito('ConfirmForgotPassword', {
+      ClientId:         cfg().cognitoClientId,
+      Username:         email,
+      ConfirmationCode: code,
+      Password:         newPassword,
+    });
+  },
+
   async signIn(email, password) {
     const data = await cognito('InitiateAuth', {
       AuthFlow: 'USER_PASSWORD_AUTH',
