@@ -54,7 +54,12 @@ async function route() {
   authView.classList.remove('hidden');
 
   const saved = await loadAuthStep();
-  if (saved?.step === 'forgot') {
+  if (saved?.step === 'confirm') {
+    // No password on restore — the in-session auto-signin relies on
+    // dataset.password, which doesn't survive a popup close. User will
+    // land on the signin pane with email prefilled after confirming.
+    showConfirmPane(saved.email || '');
+  } else if (saved?.step === 'forgot') {
     showForgotPane(saved.email || '');
   } else if (saved?.step === 'reset') {
     showResetPane(saved.email || '');
@@ -148,7 +153,11 @@ function showConfirmPane(email, password) {
 
   signinPane.classList.add('hidden');
   signupPane.classList.add('hidden');
+  forgotPane.classList.add('hidden');
+  resetPane.classList.add('hidden');
   confirmPane.classList.remove('hidden');
+
+  saveAuthStep('confirm', email || '');
 }
 
 // ─── Sign in ────────────────────────────────────────────────────────────────
