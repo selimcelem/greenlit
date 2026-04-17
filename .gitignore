@@ -21,4 +21,7 @@ infra/backend.hcl
 backend/dist/
 backend/.esbuild-cache/
 
+# Extension build zips
+*.zip
+
 greenlit.tfvars
