@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Greenlit - AI Job Match Filter",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AI-powered job match scoring directly on LinkedIn. Green, yellow or red — instantly.",
   "permissions": ["storage"],
   "host_permissions": [
