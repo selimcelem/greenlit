@@ -55,7 +55,6 @@ resource "aws_cloudwatch_metric_alarm" "billing_monthly_estimated" {
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts_us_east_1.arn]
-  ok_actions    = [aws_sns_topic.alerts_us_east_1.arn]
 }
 
 # ── Lambda daily invocation cap ─────────────────────────────────────────────
@@ -96,7 +95,6 @@ resource "aws_cloudwatch_metric_alarm" "lambda_invocations_daily" {
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
-  ok_actions    = [aws_sns_topic.alerts.arn]
 }
 
 # ── Lambda per-function error rate ──────────────────────────────────────────
@@ -149,5 +147,4 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
-  ok_actions    = [aws_sns_topic.alerts.arn]
 }
